@@ -196,9 +196,16 @@ class AioMonitor(Monitor):
 			on_service_removed=on_service_removed, on_value_changed=on_value_changed, **kwargs)
 
 	def itemsChanged(self, service:ObservableService, values):
+		#We need to call the async callback _on_value_changed if present.
+		#So, we have to raise a async io task. there may be multiple values
+		#passed, hence we wrap that to have only 1 task creation and can await the handler within that.
+		#so that the number of tasks created is smaller than number of values changed.
 		if self._on_value_changed:
-			for path in values.keys():
-				asyncio.create_task(self._on_value_changed(path, values[path], service))
+			asyncio.create_task(self._itemsChangedAsync(service, values))
+
+	async def _itemsChangedAsync(self, service:ObservableService, values):
+		for path, value in values.items():
+			await self._on_value_changed(path, value, service)
 
 	async def serviceAdded(self, service:ObservableService):
 		""" Default method, called when service is added. """

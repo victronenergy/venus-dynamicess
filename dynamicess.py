@@ -216,7 +216,6 @@ class DynamicEss():
 			self._bus,
 			on_service_added=self._on_service_added,
 			on_service_removed=self._on_service_removed,
-			on_value_changed=self._on_dbus_value_changed,
 		)
 
 		logger.debug("AioMonitor initialized.")
@@ -311,12 +310,6 @@ class DynamicEss():
 					break
 		except asyncio.CancelledError:
 			logger.debug("Last window publish timer cancelled")
-
-	async def _on_dbus_value_changed(self, path:str, value:any, service:ObservableService):
-		"""
-			Callback, if one of the aiomonitor-observed dbus paths changed.
-		"""
-		pass
 
 	async def _on_dbus_own_value_changed(self, item:Item, value, configurable:Configurable):
 		"""

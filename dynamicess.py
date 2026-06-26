@@ -1027,11 +1027,13 @@ class DynamicEss():
 			so the system can react accordingly.
 		'''
 		if error_code == ErrorCode.NO_ERROR:
+			self._dbusservice.get_item('/ErrorCode').set_local_value(ErrorCode.NO_ERROR.value)
 			self.ready = True
 			log_on_delta(logging.INFO, 'ConditionCheck', "All operational constraints met. Setting Ready-Flag.")
 		else:
-			if self.active or self.ready:
+			if self.active or self.ready or self._dbusservice.get_item('/ErrorCode').value != error_code.value:
 				await self.pause(error_code)
+			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(ReactiveStrategy.ERROR_CODE.value)
 			log_on_delta(logging.ERROR, 'ConditionCheck', f"check_condition failed with {error_code}")
 			log_on_delta(logging.INFO, 'ChargeControl', None) #reset delta logging for ChargeControl.
 

@@ -471,7 +471,7 @@ class DynamicEss():
 			#Whenever an error occurs that is totally unexpected, the delegate
 			#should enter self consume and not die.(try/catch around the control loop logic)
 
-			final_strategy = ReactiveStrategy.NO_WINDOW
+			final_strategy = ReactiveStrategy.NO_WINDOW #default, if no window is found, we will enter self consume.
 			current_window = None
 			next_window = None
 
@@ -517,7 +517,7 @@ class DynamicEss():
 				await self.publish_evcs_flags()
 			else:
 				# No matching windows
-				await self.pause(ErrorCode.NO_WINDOW)
+				await self.pause(ErrorCode.NO_MATCHING_SCHEDULE)
 
 			#write out current override strategy to determine if the local system behaves "out of schedule" on purpose.
 			if self._aiomonitor.get_value(SYSTEM_SERVICE, "/SystemState/LowSoc") == 1:

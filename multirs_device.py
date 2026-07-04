@@ -14,7 +14,7 @@ class MultiRsDevice(EssDevice):
 	@property
 	def minsoc(self):
 		# The minsoc is here on the Multi-RS
-		return self.service.get_value('/Settings/Ess/MinimumSocLimit')
+		return self.service.get_value('/Ess/ActiveSocLimit')
 
 	@property
 	def mode(self):

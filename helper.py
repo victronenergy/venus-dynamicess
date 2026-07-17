@@ -82,6 +82,7 @@ class AcSystemService(ObservableService):
 		'/Connected',
 		'/Capabilities/HasDynamicEssSupport',
 		'/Ess/AcPowerSetpoint',
+		'/Ess/ActiveSocLimit',
 		'/Ess/InverterPowerSetpoint',
 		'/Ess/UseInverterPowerSetpoint',
 		'/Ess/DisableCharge',

@@ -114,6 +114,7 @@ class ReactiveStrategy(int, Enum):
 	SELFCONSUME_ACCEPT_BELOW_TSOC = 20
 	IDLE_NO_DISCHARGE_OPPORTUNITY = 21
 	CONTROLLED_DISCHARGE_EVCS = 22
+	CHARGE_TO_MINSOC = 23
 
 	ERROR_CODE = 90
 	SELFCONSUME_INVALID_TARGETSOC = 91
@@ -135,7 +136,8 @@ CHARGE_STATES:list[ReactiveStrategy] = (
 			ReactiveStrategy.SCHEDULED_CHARGE_FEEDIN,
 			ReactiveStrategy.SCHEDULED_CHARGE_SMOOTH_TRANSITION,
 			ReactiveStrategy.UNSCHEDULED_CHARGE_CATCHUP_TARGETSOC,
-			ReactiveStrategy.KEEP_BATTERY_CHARGED
+			ReactiveStrategy.KEEP_BATTERY_CHARGED,
+			ReactiveStrategy.CHARGE_TO_MINSOC
 	)
 
 SELFCONSUME_STATES:list[ReactiveStrategy] = (
@@ -151,7 +153,8 @@ IDLE_STATES:list[ReactiveStrategy] = (
 			ReactiveStrategy.IDLE_MAINTAIN_SURPLUS,
 			ReactiveStrategy.IDLE_MAINTAIN_TARGETSOC,
 			ReactiveStrategy.IDLE_NO_OPPORTUNITY,
-			ReactiveStrategy.IDLE_NO_DISCHARGE_OPPORTUNITY
+			ReactiveStrategy.IDLE_NO_DISCHARGE_OPPORTUNITY,
+			ReactiveStrategy.ESS_LOW_SOC
 	)
 
 DISCHARGE_STATES:list[ReactiveStrategy] = (

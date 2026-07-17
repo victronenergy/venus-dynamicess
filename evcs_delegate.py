@@ -356,6 +356,11 @@ class EVCSDelegate():
 							self.add_flag(EvcsGxFlags.CHARGING)
 							logger.info("{} | ChargeNow activated via EvcsVrmFlags.".format(self.unique_identifier))
 							self.power_setpoint = 32 * 230 #just charge max, whatever that will be.
+
+							if EvcsGxFlags.EMERGENCY_COUNTDOWN in self.gx_flags:
+								self.remove_flag(EvcsGxFlags.EMERGENCY_COUNTDOWN)
+								logger.debug("{} | Canceling emergency charge countdown due to ChargeNow activated.".format(self.unique_identifier))
+								self.emergency_timer_start = None
 					else:
 						#Stop, if we are in CHARGE_NOW
 						if EvcsGxFlags.CHARGE_NOW_ACTIVE in self.gx_flags:
@@ -417,7 +422,7 @@ class EVCSDelegate():
 
 		#See, if we have to start an emergency countdown
 		#This is the case if we are not charging, scheduled or already in countdown.
-		if self.gx_flags & (EvcsGxFlags.SCHEDULED | EvcsGxFlags.CHARGING | EvcsGxFlags.EMERGENCY_COUNTDOWN) == 0:
+		if self.gx_flags & (EvcsGxFlags.SCHEDULED | EvcsGxFlags.CHARGING | EvcsGxFlags.EMERGENCY_COUNTDOWN | EvcsGxFlags.CHARGE_NOW_ACTIVE) == 0:
 			self.emergency_timer_start = now
 			logger.info("{} | Starting emergency charge countdown ({}s).".format(self.unique_identifier, C_EV_EMERGENCY_START.current_value))
 			self.add_flag(EvcsGxFlags.EMERGENCY_COUNTDOWN)
@@ -434,7 +439,7 @@ class EVCSDelegate():
 
 		#Are we emergency charging and need to keep the setpoint?
 		if self.gx_flags & EvcsGxFlags.EMERGENCY_ACTIVE:
-			self.power_setpoint = -1 #-1 means charge at the minum possible rate (for now)
+			self.power_setpoint = -1 #-1 means charge at the minimum possible rate (for now)
 
 		#finally, this EVCS eventually needs to approach a setpoint?
 		# -1 and 0 targets should always be passed on.

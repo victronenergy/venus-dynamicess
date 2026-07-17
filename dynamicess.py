@@ -116,6 +116,7 @@ class DynamicEss():
 		self._idle_feedin = None #Cache the feedin-allowance of the window during idle, to quickly update the idle setpoint upon value changes.
 		self._is_pv_disabled = False #Flag indicating if PV is currently disabled.
 		self._last_unprocessed_schedule_change = None #flag to see if we have to find new "last_schedule"
+		self._is_emergency_recharge = False
 
 		self._evcs_delegates:dict[str, EVCSDelegate] = {}
 
@@ -519,10 +520,6 @@ class DynamicEss():
 				# No matching windows
 				await self.pause(ErrorCode.NO_MATCHING_SCHEDULE)
 
-			#write out current override strategy to determine if the local system behaves "out of schedule" on purpose.
-			if self._aiomonitor.get_value(SYSTEM_SERVICE, "/SystemState/LowSoc") == 1:
-				final_strategy= ReactiveStrategy.ESS_LOW_SOC
-
 			#done, reset iteration_change_tracker
 			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(final_strategy.value)
 			self.iteration_change_tracker.done(final_strategy)
@@ -647,6 +644,10 @@ class DynamicEss():
 		# However it will be more precice to only consider the "available ac pv" with 0.9. Direct Consumption will basically
 		# lower the available acpv without conversion losses.
 
+		#Needs to be determined. Individual blocks should take care to not overwrite existing
+		#decisissions UNLESS it is explicit checked and desired.
+		reactive_strategy = None
+
 		if w.soc is None:
 			return ReactiveStrategy.SELFCONSUME_INVALID_TARGETSOC
 
@@ -681,8 +682,37 @@ class DynamicEss():
 		target_soc_change = self.iteration_change_tracker.target_soc_change()
 		window_progress = w.get_window_progress(now) or 0
 
-		# When we have a Scheduled-Selfconsume, we can ommit to walk through the decission tree.
-		if w.strategy == Strategy.SELFCONSUME:
+		#Around MINSOC we need a special behaviour. We may encounter beeing way bellow minsoc, when
+		#resuming operation after a grid loss. Then, charging should happen immediately. In other cases
+		#we will allow to go 1% bellow minsoc, to avoid to frequent charging of 0.1% or sth.
+		if self._device.minsoc is not None and self._device.minsoc > 0:
+			#check if we need to leave emergency_charge_state
+			if (self.soc >= self._device.minsoc and self._is_emergency_recharge):
+				self._is_emergency_recharge = False #reset flag, we are back to normal operation.
+
+			#if we are equal or bellow minsoc, switch to the reactive strategy ESS_LOW_SOC.
+			#it does not yet do anything, just indicate we are in a exceptional state.
+			#if we have started the recharging, this is not eligible anymore.
+
+			if (self.soc <= round(self._device.minsoc, self.soc_precision) and not self._is_emergency_recharge):
+				reactive_strategy = ReactiveStrategy.ESS_LOW_SOC
+
+			if (self.soc <= round(self._device.minsoc - 1, self.soc_precision) or self._is_emergency_recharge):
+				# we are 1% bellow minsoc, charge immediately, no matter what the schedule says.
+				# drop restrictions present.
+				reactive_strategy = ReactiveStrategy.CHARGE_TO_MINSOC
+				self._is_emergency_recharge = True #set a flag, so we can mainin this state even if soc is raising.
+
+				#if we are only in the range of upto 1%, we use 25% of the maximum chargerate
+				#if we are bellow 1% of minsoc, we use 100% of the maximum chargerate.
+				delta = round(round(self._device.minsoc, self.soc_precision) - self.soc, 0)
+				restrictions = Restrictions.NONE #drop restrictions, we need to charge to minsoc.
+				if delta <= 1:
+					self.chargerate = round((C_BATTERY_CHARGE_LIMIT.current_value or 0) * 1000 * self.oneway_efficiency * 0.25)
+				else:
+					self.chargerate = round((C_BATTERY_CHARGE_LIMIT.current_value or 0) * 1000 * self.oneway_efficiency)
+
+		if w.strategy == Strategy.SELFCONSUME and reactive_strategy is None:
 			self.chargerate = None #No scheduled chargerate in this case.
 			self.targetsoc = None
 			self.charge_hysteresis = self.hysteresis
@@ -699,7 +729,6 @@ class DynamicEss():
 			#this should never happen. extra safety check to avoid undesired discharges.
 			return ReactiveStrategy.SELFCONSUME_INVALID_TARGETSOC
 
-		#detect soc drop during idle.
 		if self.targetsoc is not None and round(self.targetsoc, self.soc_precision) != new_targetsoc:
 			self.chargerate = None # For recalculation, if target soc changes.
 
@@ -712,155 +741,153 @@ class DynamicEss():
 		excess_to_bat = not excess_to_grid
 		missing_to_bat = not missing_to_grid
 
-		#Needs to be determined
-		reactive_strategy = None
+		if reactive_strategy is None:
+			if round(self.soc + self.charge_hysteresis, self.soc_precision) < self.targetsoc or self.targetsoc >= 100:
+				# if 100% is reached, keep batteries charged.
+				# Mind we need to leave this, if missing2bat copping is selected and the ME-indicator is negative.
+				# (To be more precice, as soon as the 250 Watt requested couldnt't be served by solar, fall back to default behaviour)
+				if self.targetsoc >= 100 and self.soc >= 100 and (missing_to_grid or (missing_to_bat and available_solar_plus > 250)):
+					self.chargerate = 250
+					reactive_strategy = ReactiveStrategy.KEEP_BATTERY_CHARGED
 
-		if round(self.soc + self.charge_hysteresis, self.soc_precision) < self.targetsoc or self.targetsoc >= 100:
-			# if 100% is reached, keep batteries charged.
-			# Mind we need to leave this, if missing2bat copping is selected and the ME-indicator is negative.
-			# (To be more precice, as soon as the 250 Watt requested couldnt't be served by solar, fall back to default behaviour)
-			if self.targetsoc >= 100 and self.soc >= 100 and (missing_to_grid or (missing_to_bat and available_solar_plus > 250)):
-				self.chargerate = 250
-				reactive_strategy = ReactiveStrategy.KEEP_BATTERY_CHARGED
-
-			# we are behind plan. Charging is required.
-			else:
-				await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
-
-				# Based on the coping flags, charging has 4 options
-				# Also restrictions may be applied (grid2bat).
-				if available_solar_plus > self.chargerate:
-					# 1) There is more solar than expected and we are EXCESSTOBAT -> charge enhanced.
-					#    This state also needs to be enforced, when feedin is restricted
-					if excess_to_bat or not w.allow_feedin:
-						self.override_chargerate = available_solar_plus
-						reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_ENHANCED
-
-					# 2) There is more solar than expected and we are EXCESSTOGRID -> charge at calculated charge rate, accept feedin happening.
-					#    This state is dissallowed, when feedin is restricted, but then we already entered situation 1.
-					elif excess_to_grid:
-						reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_FEEDIN
+				# we are behind plan. Charging is required.
 				else:
-					#available_solar_plus <= self.chargerate
+					await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
 
-					# 3) There isn't enough solar and we are flagged MISSINGTOGRID -> use calculated charge rate.
-					#    (Wording note: Missing2Grid describes the punishment of missing energy to the grid - so TAKING energy from the grid ;-))
-					#    But, this state is dissallowed, if a Grid2Bat Restriction is active.
-					if missing_to_grid and not (Restrictions.GRID2BAT in w.restrictions):
-						reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_ALLOW_GRID
+					# Based on the coping flags, charging has 4 options
+					# Also restrictions may be applied (grid2bat).
+					if available_solar_plus > self.chargerate:
+						# 1) There is more solar than expected and we are EXCESSTOBAT -> charge enhanced.
+						#    This state also needs to be enforced, when feedin is restricted
+						if excess_to_bat or not w.allow_feedin:
+							self.override_chargerate = available_solar_plus
+							reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_ENHANCED
 
-					# 4) There isn't enough solar and we are flagged MISSINGTOBAT -> only use solar power that is availble.
-					#    This is self consume, until condition changes.
-					#    In case there is Grid2Bat restriction, this is our only option, even if the flag would indicate MISSINGTOGRID
-					elif available_solar_plus > 0 and (missing_to_bat or (Restrictions.GRID2BAT in w.restrictions)):
-						reactive_strategy = ReactiveStrategy.SELFCONSUME_NO_GRID
+						# 2) There is more solar than expected and we are EXCESSTOGRID -> charge at calculated charge rate, accept feedin happening.
+						#    This state is dissallowed, when feedin is restricted, but then we already entered situation 1.
+						elif excess_to_grid:
+							reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_FEEDIN
+					else:
+						#available_solar_plus <= self.chargerate
 
-					# 5.) No Grid charge possible, no solar. We can't charge.
-					#     However, when we have missing_to_bat, we allow to go bellow target soc.
-					elif available_solar_plus <= 0 and missing_to_bat:
-						reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_BELOW_TSOC
+						# 3) There isn't enough solar and we are flagged MISSINGTOGRID -> use calculated charge rate.
+						#    (Wording note: Missing2Grid describes the punishment of missing energy to the grid - so TAKING energy from the grid ;-))
+						#    But, this state is dissallowed, if a Grid2Bat Restriction is active.
+						if missing_to_grid and not (Restrictions.GRID2BAT in w.restrictions):
+							reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_ALLOW_GRID
 
-					# 5.) No Grid charge possible, no solar. We can't charge.
-					#     with missing2grid, but grid2bat restriction we can only idle now.
-					#     missing2grid with no restriction is already handled in case 3.
-					elif available_solar_plus <= 0 and missing_to_grid and (Restrictions.GRID2BAT in w.restrictions):
-						reactive_strategy = ReactiveStrategy.IDLE_NO_OPPORTUNITY
+						# 4) There isn't enough solar and we are flagged MISSINGTOBAT -> only use solar power that is availble.
+						#    This is self consume, until condition changes.
+						#    In case there is Grid2Bat restriction, this is our only option, even if the flag would indicate MISSINGTOGRID
+						elif available_solar_plus > 0 and (missing_to_bat or (Restrictions.GRID2BAT in w.restrictions)):
+							reactive_strategy = ReactiveStrategy.SELFCONSUME_NO_GRID
 
-		else:
-			# if we are currently in any SCHEDULED_CHARGE_* State and our next window outlines an even higher target soc,
-			# don't switch to idle, but keep a certain chargerate. As soon as target_soc changes, this state has to be left.
-			# but only enter it, when window progress is >= TRANSITION_STATE_THRESHOLD
-			if (self.iteration_change_tracker._previous_reactive_strategy in CHARGE_STATES and
-	   			next_window_higher_target_soc and window_progress >= TRANSITION_STATE_THRESHOLD) or \
-				(self.iteration_change_tracker._previous_reactive_strategy == ReactiveStrategy.SCHEDULED_CHARGE_SMOOTH_TRANSITION and target_soc_change == ChangeIndicator.NONE):
-				# keep current charge rate untouched.
-				# already targeting the new soc target of "next" window will cause a not smooth transition, if next window in slot 1 is outdated
-				# and the next window beeing pushed to slot 0 indicates another target soc.
-				reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_SMOOTH_TRANSITION
+						# 5.) No Grid charge possible, no solar. We can't charge.
+						#     However, when we have missing_to_bat, we allow to go bellow target soc.
+						elif available_solar_plus <= 0 and missing_to_bat:
+							reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_BELOW_TSOC
+
+						# 5.) No Grid charge possible, no solar. We can't charge.
+						#     with missing2grid, but grid2bat restriction we can only idle now.
+						#     missing2grid with no restriction is already handled in case 3.
+						elif available_solar_plus <= 0 and missing_to_grid and (Restrictions.GRID2BAT in w.restrictions):
+							reactive_strategy = ReactiveStrategy.IDLE_NO_OPPORTUNITY
+
 			else:
-				# we are above or equal to target soc, or the charge histeresis has not yet kicked in from a prior state.
-
-				if (available_solar_plus > 0 and not excess_to_grid):
-					# If surplus is available, always attempt to charge, unless we are flagged EXCESSTOGRID
-					reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_CHARGE
-
+				# if we are currently in any SCHEDULED_CHARGE_* State and our next window outlines an even higher target soc,
+				# don't switch to idle, but keep a certain chargerate. As soon as target_soc changes, this state has to be left.
+				# but only enter it, when window progress is >= TRANSITION_STATE_THRESHOLD
+				if (self.iteration_change_tracker._previous_reactive_strategy in CHARGE_STATES and
+					next_window_higher_target_soc and window_progress >= TRANSITION_STATE_THRESHOLD) or \
+					(self.iteration_change_tracker._previous_reactive_strategy == ReactiveStrategy.SCHEDULED_CHARGE_SMOOTH_TRANSITION and target_soc_change == ChangeIndicator.NONE):
+					# keep current charge rate untouched.
+					# already targeting the new soc target of "next" window will cause a not smooth transition, if next window in slot 1 is outdated
+					# and the next window beeing pushed to slot 0 indicates another target soc.
+					reactive_strategy = ReactiveStrategy.SCHEDULED_CHARGE_SMOOTH_TRANSITION
 				else:
-					# so, now we have: (availableSolarPlus <= 0 or solaroverhaed, but excess_to_grid) and (equal or above targetSoc).
-					# so, most likely any of the discharge-variants is required (or ultimately idle)
-					# if we are flagged EXESSTOGRID and MISSINGTOGRID, perform a strict discharge, based on soc difference.
-					# Any imprecission shall be handled by the grid
-					# not allowed with bat2grid restriction
-					#       When we have a bat2grid restriction, we should discharge at full consumption, feeding in 100% of solar production.
-					if self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc) and excess_to_grid and missing_to_grid \
-						and not (Restrictions.BAT2GRID in restrictions):
-						await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
-						reactive_strategy = ReactiveStrategy.SCHEDULED_DISCHARGE
+					# we are above or equal to target soc, or the charge histeresis has not yet kicked in from a prior state.
 
-					# if flags are EXCESSTOGRID and MISSINGTOBAT, that means: keep a MINIMUM dischargerate, but allow to discharge more, if consumption-solar is higher.
-					# not allowed with bat2grid restriction
-					# so, we do some quick maths, if loads would require a higher discharge - then we let self consume handle that, over calculating a "better" discharge rate.
-					elif self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc) and excess_to_grid and missing_to_bat \
-						and not (Restrictions.BAT2GRID in restrictions):
-						await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
-						me_indicator = available_solar_plus - self.chargerate
-
-						if me_indicator < 0:
-							# missing, let self consume handle this over calculating a improved rate.
-							reactive_strategy =  ReactiveStrategy.SELFCONSUME_INCREASED_DISCHARGE
-						else:
-							# excess, ensure the minimum discharge rate required to reach targetsoc as of "now".
-							self.override_chargerate = abs(self.chargerate) * -1
-							reactive_strategy =  ReactiveStrategy.SCHEDULED_MINIMUM_DISCHARGE
-
-					# left over discharge cases:
-					#	FIXME: When we have pro Grid and a battery restriction but Solar > consumption, self-consume states are not suitable - it will charge. Idle Instead.
-					#   - bat2grid restricted -> Selfconsume to drive loads, or Idle
-					#   - EXCESSTOBAT and MISSINGTOBAT -> self consume
-					#   - EXCESSTOBAT and MISSINGTOGRID:
-					#     Technically that means, we should have a MAXIMUM dischargerate and punish the energy above that to the grid
-					#     However, that may cause some grid2consumption happening in the beginning of the window, but still ending up above target soc.
-					#     So that would be gridpull for no reason.
-					#     So, the more logical way is to accept ANY discharge, but simple stop when reaching target soc - and punish the remaining
-					#     load during that window to the grid. -> also self consume
-					# BUT: we are only doing this, If our next window has a smaller, equal or no target soc
-					elif self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc):
-						# we are supposed to drive loads only to achieve the indendet discharge. However, if solar > consumption and a bat2grid restriction,
-						# we have no discharge opportunity, Then, we ultimately only can idle to stay close to target soc.
-						if available_solar_plus > 0 and (Restrictions.BAT2GRID in restrictions):
-							reactive_strategy = ReactiveStrategy.IDLE_NO_DISCHARGE_OPPORTUNITY
-						else:
-							if (self.is_ev_charging()):
-								await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
-								reactive_strategy = ReactiveStrategy.CONTROLLED_DISCHARGE_EVCS
-							else:
-								reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_DISCHARGE
+					if (available_solar_plus > 0 and not excess_to_grid):
+						# If surplus is available, always attempt to charge, unless we are flagged EXCESSTOGRID
+						reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_CHARGE
 
 					else:
-						# Here we are:
-						# - Ahead of plan, but the next window indicates a higher soc target.
-						# - Spot on target soc, so idling is imminent / above targetSoc by discharge_hysteresis %.
-						# - available solar plus, but intended feedin.
-						if available_solar_plus > 0 and excess_to_grid:
-							# We have solar surplus, but VRM wants an explicit feedin.
-							# since we are above or equal to target soc, we are going idle to achieve that.
-							reactive_strategy = ReactiveStrategy.IDLE_SCHEDULED_FEEDIN
-						else:
-							if (self.iteration_change_tracker._previous_reactive_strategy in DISCHARGE_STATES and
-								next_window_lower_target_soc and window_progress >= TRANSITION_STATE_THRESHOLD) or \
-								(self.iteration_change_tracker._previous_reactive_strategy == ReactiveStrategy.SCHEDULED_DISCHARGE_SMOOTH_TRANSITION and target_soc_change == ChangeIndicator.NONE):
-								# keep current charge rate untouched.
-								# but only enter it, when window progress is >= TRANSITION_STATE_THRESHOLD
-								reactive_strategy = ReactiveStrategy.SCHEDULED_DISCHARGE_SMOOTH_TRANSITION
+						# so, now we have: (availableSolarPlus <= 0 or solaroverhaed, but excess_to_grid) and (equal or above targetSoc).
+						# so, most likely any of the discharge-variants is required (or ultimately idle)
+						# if we are flagged EXESSTOGRID and MISSINGTOGRID, perform a strict discharge, based on soc difference.
+						# Any imprecission shall be handled by the grid
+						# not allowed with bat2grid restriction
+						#       When we have a bat2grid restriction, we should discharge at full consumption, feeding in 100% of solar production.
+						if self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc) and excess_to_grid and missing_to_grid \
+							and not (Restrictions.BAT2GRID in restrictions):
+							await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
+							reactive_strategy = ReactiveStrategy.SCHEDULED_DISCHARGE
+
+						# if flags are EXCESSTOGRID and MISSINGTOBAT, that means: keep a MINIMUM dischargerate, but allow to discharge more, if consumption-solar is higher.
+						# not allowed with bat2grid restriction
+						# so, we do some quick maths, if loads would require a higher discharge - then we let self consume handle that, over calculating a "better" discharge rate.
+						elif self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc) and excess_to_grid and missing_to_bat \
+							and not (Restrictions.BAT2GRID in restrictions):
+							await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
+							me_indicator = available_solar_plus - self.chargerate
+
+							if me_indicator < 0:
+								# missing, let self consume handle this over calculating a improved rate.
+								reactive_strategy =  ReactiveStrategy.SELFCONSUME_INCREASED_DISCHARGE
 							else:
-								# else, we have soc==targetsoc, or soc - discharge_hystersis > targetsoc.
-								# In Case of MISSING_TO_BAT, we allow to discharge bellow target soc.
-								# Forced discharges are already handled, so we simply let self-consume handle the required amount
-								# of discharge here.
-								if missing_to_bat:
-									reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_BELOW_TSOC
+								# excess, ensure the minimum discharge rate required to reach targetsoc as of "now".
+								self.override_chargerate = abs(self.chargerate) * -1
+								reactive_strategy =  ReactiveStrategy.SCHEDULED_MINIMUM_DISCHARGE
+
+						# left over discharge cases:
+						#	FIXME: When we have pro Grid and a battery restriction but Solar > consumption, self-consume states are not suitable - it will charge. Idle Instead.
+						#   - bat2grid restricted -> Selfconsume to drive loads, or Idle
+						#   - EXCESSTOBAT and MISSINGTOBAT -> self consume
+						#   - EXCESSTOBAT and MISSINGTOGRID:
+						#     Technically that means, we should have a MAXIMUM dischargerate and punish the energy above that to the grid
+						#     However, that may cause some grid2consumption happening in the beginning of the window, but still ending up above target soc.
+						#     So that would be gridpull for no reason.
+						#     So, the more logical way is to accept ANY discharge, but simple stop when reaching target soc - and punish the remaining
+						#     load during that window to the grid. -> also self consume
+						# BUT: we are only doing this, If our next window has a smaller, equal or no target soc
+						elif self.soc - self.discharge_hysteresis > max(self.targetsoc, self._device.minsoc):
+							# we are supposed to drive loads only to achieve the indendet discharge. However, if solar > consumption and a bat2grid restriction,
+							# we have no discharge opportunity, Then, we ultimately only can idle to stay close to target soc.
+							if available_solar_plus > 0 and (Restrictions.BAT2GRID in restrictions):
+								reactive_strategy = ReactiveStrategy.IDLE_NO_DISCHARGE_OPPORTUNITY
+							else:
+								if (self.is_ev_charging()):
+									await self._update_chargerate(now, w.stop, self.soc, self.targetsoc)
+									reactive_strategy = ReactiveStrategy.CONTROLLED_DISCHARGE_EVCS
 								else:
-									# else we ultimately idle.
-									reactive_strategy = ReactiveStrategy.IDLE_MAINTAIN_TARGETSOC
+									reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_DISCHARGE
+
+						else:
+							# Here we are:
+							# - Ahead of plan, but the next window indicates a higher soc target.
+							# - Spot on target soc, so idling is imminent / above targetSoc by discharge_hysteresis %.
+							# - available solar plus, but intended feedin.
+							if available_solar_plus > 0 and excess_to_grid:
+								# We have solar surplus, but VRM wants an explicit feedin.
+								# since we are above or equal to target soc, we are going idle to achieve that.
+								reactive_strategy = ReactiveStrategy.IDLE_SCHEDULED_FEEDIN
+							else:
+								if (self.iteration_change_tracker._previous_reactive_strategy in DISCHARGE_STATES and
+									next_window_lower_target_soc and window_progress >= TRANSITION_STATE_THRESHOLD) or \
+									(self.iteration_change_tracker._previous_reactive_strategy == ReactiveStrategy.SCHEDULED_DISCHARGE_SMOOTH_TRANSITION and target_soc_change == ChangeIndicator.NONE):
+									# keep current charge rate untouched.
+									# but only enter it, when window progress is >= TRANSITION_STATE_THRESHOLD
+									reactive_strategy = ReactiveStrategy.SCHEDULED_DISCHARGE_SMOOTH_TRANSITION
+								else:
+									# else, we have soc==targetsoc, or soc - discharge_hystersis > targetsoc.
+									# In Case of MISSING_TO_BAT, we allow to discharge bellow target soc.
+									# Forced discharges are already handled, so we simply let self-consume handle the required amount
+									# of discharge here.
+									if missing_to_bat:
+										reactive_strategy = ReactiveStrategy.SELFCONSUME_ACCEPT_BELOW_TSOC
+									else:
+										# else we ultimately idle.
+										reactive_strategy = ReactiveStrategy.IDLE_MAINTAIN_TARGETSOC
 
 		#bellow here, ReactiveStrategy should be determined. As well as chargerate, if required. If it isn't
 		#Enter self consume, as conditions may change and situation will resolve.

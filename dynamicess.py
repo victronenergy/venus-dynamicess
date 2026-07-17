@@ -1058,7 +1058,7 @@ class DynamicEss():
 			self.ready = True
 			log_on_delta(logging.INFO, 'ConditionCheck', "All operational constraints met. Setting Ready-Flag.")
 		else:
-			if self.active or self.ready or self._dbusservice.get_item('/ErrorCode').value != error_code.value:
+			if self.active or self.ready or self._dbusservice.get_item('/ErrorCode').value != error_code:
 				await self.pause(error_code)
 			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(ReactiveStrategy.ERROR_CODE.value)
 			log_on_delta(logging.ERROR, 'ConditionCheck', f"check_condition failed with {error_code}")

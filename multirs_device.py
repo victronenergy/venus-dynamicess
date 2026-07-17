@@ -1,6 +1,6 @@
 import math
 from ess_device import EssDevice
-from globals import C_BATTERY_CHARGE_LIMIT, C_BATTERY_DISCHARGE_LIMIT, C_GRID_EXPORT_LIMIT, C_GRID_IMPORT_LIMIT, Restrictions, Flags
+from globals import C_BATTERY_CHARGE_LIMIT, C_BATTERY_DISCHARGE_LIMIT, C_GRID_EXPORT_LIMIT, C_GRID_IMPORT_LIMIT, ErrorCode, Restrictions, Flags
 
 class MultiRsDevice(EssDevice):
 	@property
@@ -20,13 +20,13 @@ class MultiRsDevice(EssDevice):
 	def mode(self):
 		return self.service.get_value('/Settings/Ess/Mode')
 
-	def check_conditions(self):
+	def check_conditions(self) -> ErrorCode:
 		# Not in optimised mode, no point in doing anything
 		if self.mode not in (0, 1):
-			return 2 # ESS mode is wrong
+			return ErrorCode.ESS_MODE
 		if self.minsoc is None:
-			return 4 # SOC low, happens during firmware updates
-		return 0
+			return ErrorCode.SOC_LOW # happens during firmware updates
+		return ErrorCode.NO_ERROR
 
 	def charge(self, flags, restrictions:Restrictions, rate, allow_feedin):
 		# the incoming rate is the desired battery charge rate (dc)

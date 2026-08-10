@@ -163,6 +163,15 @@ class EVCSDelegate():
 			#just gently remove the Control Disabled flag, this will re-initiate a connection if possible.
 			self.remove_flag(EvcsGxFlags.EVCS_CONTROL_DISABLED)
 
+		#The RM can lose its session on its own side without an S2 Disconnect
+		#reaching us and without KeepAlive ever failing, so cross-check its own
+		#liveness flag rather than relying on KeepAlive alone.
+		if self.gx_flags & EvcsGxFlags.GX_AUTO_ACQUIRED and self.service is not None:
+			rm_active = self.service.get_value("/S2/0/Active")
+			if rm_active is not None and not rm_active:
+				logger.warning("{} | RM reports /S2/0/Active=False while session is still latched. Dropping and retrying.".format(self.unique_identifier))
+				await self.end()
+
 	async def _approach_setpoint(self):
 		"""
 			Makes the state machine traverse the S2 Control Model until a suitable state

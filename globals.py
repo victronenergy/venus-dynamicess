@@ -21,6 +21,7 @@ class ErrorCode(int, Enum):
 	NO_MATCHING_SCHEDULE = 3
 	SOC_LOW = 4
 	BATTERY_CAPACITY_UNSET = 5
+	ESS_KEEPCHARGED = 6
 
 class Strategy(int, Enum):
 	TARGETSOC = 0		#ME-Coping: grid / grid

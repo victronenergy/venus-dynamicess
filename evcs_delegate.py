@@ -71,6 +71,7 @@ class EVCSDelegate():
 		self.power_setpoint = 0
 		self.no_phases = None
 		self._keep_alive_missed = 0
+		self._rm_session_confirmed_active = False
 		self.emergency_timer_start = None
 		self._reply_handler_dict:Dict[uuid.UUID, Callable[[ReceptionStatus], None]]={} #TODO Needs handling, when replies are never received?
 
@@ -165,10 +166,16 @@ class EVCSDelegate():
 
 		#The RM can lose its session on its own side without an S2 Disconnect
 		#reaching us and without KeepAlive ever failing, so cross-check its own
-		#liveness flag rather than relying on KeepAlive alone.
+		#liveness flag rather than relying on KeepAlive alone. /S2/0/Active is
+		#read from a locally cached value that may not have caught up yet
+		#right after connecting, so only act on it once it has actually been
+		#seen active at least once -- otherwise we'd drop a session before
+		#the RM even had a chance to confirm it.
 		if self.gx_flags & EvcsGxFlags.GX_AUTO_ACQUIRED and self.service is not None:
 			rm_active = self.service.get_value("/S2/0/Active")
-			if rm_active is not None and not rm_active:
+			if rm_active:
+				self._rm_session_confirmed_active = True
+			elif rm_active is not None and self._rm_session_confirmed_active:
 				logger.warning("{} | RM reports /S2/0/Active=False while session is still latched. Dropping and retrying.".format(self.unique_identifier))
 				await self.end()
 

@@ -65,14 +65,17 @@ class EvcsS2ActiveLivenessTest(unittest.IsolatedAsyncioTestCase):
         return delegate
 
     async def test_dead_rm_session_is_detected_even_though_keepalive_still_acks(self):
-        """/S2/0/Active=0 while the session is latched -> must be dropped so
-        the retry-connect logic can re-acquire it."""
-        delegate = self._make_delegate(active_value=0)
+        """Session was confirmed alive at least once, then /S2/0/Active flips
+        to 0 while still latched -> must be dropped so the retry-connect
+        logic can re-acquire it."""
+        delegate = self._make_delegate(active_value=1)
+        await delegate._check_conditions()  # observes Active=1, arms the check
 
         result = await delegate._aiomonitor.dbus_call(
             delegate.service.name, delegate.s2rmpath, "KeepAlive", "s", "CEM")
         self.assertEqual(result, [True])
 
+        delegate.service.set("/S2/0/Active", 0)
         await delegate._check_conditions()
 
         self.assertNotIn(EvcsGxFlags.CONTROLLABLE, delegate.gx_flags)
@@ -95,6 +98,31 @@ class EvcsS2ActiveLivenessTest(unittest.IsolatedAsyncioTestCase):
         await delegate._check_conditions()
 
         self.assertEqual(delegate.gx_flags, before)
+
+    async def test_freshly_connected_session_is_not_dropped_before_rm_publishes_active(self):
+        """Right after begin(), /S2/0/Active is read from aiovelib's locally
+        cached Item (see ext/aiovelib/aiovelib/client.py Service.get_value) --
+        it isn't a live read, and the RM hasn't necessarily published (or we
+        haven't yet received) Active=1 by the time the very next
+        _check_conditions() tick runs. A session that has never yet been
+        observed as active must not be torn down just because it hasn't
+        confirmed itself alive yet."""
+        delegate = self._make_delegate(active_value=0)
+        before = delegate.gx_flags
+
+        await delegate._check_conditions()
+
+        self.assertEqual(delegate.gx_flags, before)
+
+        # once the RM does publish Active=1, the session must still be
+        # usable -- confirm the check arms itself rather than staying stuck.
+        delegate.service.set("/S2/0/Active", 1)
+        await delegate._check_conditions()
+        self.assertEqual(delegate.gx_flags, before)
+
+        delegate.service.set("/S2/0/Active", 0)
+        await delegate._check_conditions()
+        self.assertNotIn(EvcsGxFlags.CONTROLLABLE, delegate.gx_flags)
 
 
 if __name__ == "__main__":

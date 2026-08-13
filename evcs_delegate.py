@@ -31,6 +31,7 @@ from constants import (
 
 from globals import(
 	 C_DISABLE_EVCS_CONTROL,
+	 C_EV_EMERGENCY_SETPOINT,
 	 C_EV_EMERGENCY_START,
 	 C_EV_EMERGENCY_START,
 	 C_EVCS_VRM_FLAGS,
@@ -371,7 +372,7 @@ class EVCSDelegate():
 							self.add_flag(EvcsGxFlags.CHARGE_NOW_ACTIVE)
 							self.add_flag(EvcsGxFlags.CHARGING)
 							logger.info("{} | ChargeNow activated via EvcsVrmFlags.".format(self.unique_identifier))
-							self.power_setpoint = 32 * 230 #just charge max, whatever that will be.
+							self.power_setpoint = 32 * 235 #just charge max, whatever that will be.
 
 							if EvcsGxFlags.EMERGENCY_COUNTDOWN in self.gx_flags:
 								self.remove_flag(EvcsGxFlags.EMERGENCY_COUNTDOWN)
@@ -450,12 +451,12 @@ class EVCSDelegate():
 				self.remove_flag(EvcsGxFlags.EMERGENCY_COUNTDOWN)
 				self.add_flag(EvcsGxFlags.EMERGENCY_ACTIVE)
 				self.add_flag(EvcsGxFlags.CHARGING)
-				self.power_setpoint = -1 #-1 means charge at the minum possible rate (for now)
+				self.power_setpoint = C_EV_EMERGENCY_SETPOINT.current_value
 				logger.info("{} | Starting emergency charge after {}s.".format(self.unique_identifier, C_EV_EMERGENCY_START.current_value))
 
 		#Are we emergency charging and need to keep the setpoint?
 		if self.gx_flags & EvcsGxFlags.EMERGENCY_ACTIVE:
-			self.power_setpoint = -1 #-1 means charge at the minimum possible rate (for now)
+			self.power_setpoint = C_EV_EMERGENCY_SETPOINT.current_value
 
 		#finally, this EVCS eventually needs to approach a setpoint?
 		# -1 and 0 targets should always be passed on.

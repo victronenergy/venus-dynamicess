@@ -246,10 +246,10 @@ C_EV_EMERGENCY_START = Configurable(
 	'/Settings/DynamicEss/EVEmergencyStart',
 	'dess_evemergencystart', 60*60, 0, 86400, CONFIGURABLES
 )
-C_EV_EMERGENCY_CURRENT = Configurable(
+C_EV_EMERGENCY_SETPOINT = Configurable(
 	None,
-	'/Settings/DynamicEss/EVEmergencyCurrent',
-	'dess_evemergencycurrent', 6, 0, 32, CONFIGURABLES
+	'/Settings/DynamicEss/EVEmergencySetpoint',
+	'dess_evemergencysetpoint', -1, -1, 100000, CONFIGURABLES
 )
 C_EVCS_VRM_FLAGS = Configurable(
 	None,

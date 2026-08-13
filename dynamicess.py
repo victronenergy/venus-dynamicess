@@ -354,7 +354,13 @@ class DynamicEss():
 
 				#connect in 10 seconds, to give dbus-mqtt enough time to sort s2 with the evcs after a restart.
 				await asyncio.sleep(10)
-				await self._evcs_delegates[str(instance)].begin(evcs_disabled)
+
+				#the service may have been removed again while we were waiting.
+				if self._evcs_delegates.get(str(instance)) is not delegate:
+					logger.debug("EV Charger #{} on {} vanished before initial connect; skipping begin().".format(instance, service))
+					return
+
+				await delegate.begin(evcs_disabled)
 
 	async def _on_service_removed(self, name:str, instance:int, service:ObservableService):
 		if service in self._external_solarcharger_services:

@@ -60,7 +60,7 @@ class VebusDevice(EssDevice):
 		# BatteryLifeState.KeepCharged is not supported (nothing to do)
 		#FIXME: Raise a Info-Level notification, so users remember to switch back.
 		if self._aiomonitor.get_value(SYSTEM_SERVICE, '/Control/EssState') == 9 or self.hub4mode == 3:
-			return ErrorCode.ESS_KEEPCHARGED
+			return ErrorCode.ESS_MODE
 
 		# KeepCharged will also set minsoc to none - so this check should come after, else the minsoc
 		# error will always dominate.

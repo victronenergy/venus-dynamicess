@@ -4,7 +4,7 @@ from helper import Configurable
 from enum import Enum, IntFlag
 import logging
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 BRANCH = ""
 
 class Mode(int, Enum):
@@ -21,6 +21,7 @@ class ErrorCode(int, Enum):
 	NO_MATCHING_SCHEDULE = 3
 	SOC_LOW = 4
 	BATTERY_CAPACITY_UNSET = 5
+	DESS_DISABLED = 6
 
 class Strategy(int, Enum):
 	TARGETSOC = 0		#ME-Coping: grid / grid

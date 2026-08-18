@@ -74,6 +74,7 @@ from globals import (
 	C_DISABLE_EVCS_CONTROL,
 	C_EFFICIENCY,
 	C_LAST_RUN_VERSION,
+	C_MODE,
 	C_OPERATING_MODE,
 	C_ENABLE_DEBUG_LOGGING,
 	Mode,
@@ -173,7 +174,6 @@ class DynamicEss():
 
 		#init done, perform post-startup-operations, if any.
 		await self._post_startup()
-
 
 
 	async def _init_settings(self) -> SettingsService:
@@ -352,6 +352,7 @@ class DynamicEss():
 				delegate = EVCSDelegate(service, instance, self._aiomonitor, self, evcs_disabled)
 				self._evcs_delegates[str(instance)] = delegate
 
+				#TODO: Probably replace the hardcoded delay with a check for readiness based on paths?
 				#connect in 10 seconds, to give dbus-mqtt enough time to sort s2 with the evcs after a restart.
 				await asyncio.sleep(10)
 
@@ -427,12 +428,12 @@ class DynamicEss():
 		#restore default ESS mode
 		await self.pause(ErrorCode.NO_ERROR)
 
-		#disconnect all active EVCS.
-		for evcs in self._evcs_delegates.values():
-			if EvcsGxFlags.GX_AUTO_ACQUIRED in evcs.gx_flags:
-				await evcs.end(True)
+		#disconnect all active EVCS. - pause will currently handle this as well.
+		#for evcs in self._evcs_delegates.values():
+		#	if EvcsGxFlags.GX_AUTO_ACQUIRED in evcs.gx_flags:
+		#		await evcs.end(True)
 
-		await self.publish_evcs_flags() #publish once after all are disconnected.
+		#await self.publish_evcs_flags() #publish once after all are disconnected.
 
 		#done, byebye.
 		asyncio.get_running_loop().stop()
@@ -545,15 +546,22 @@ class DynamicEss():
 		return True
 
 	async def _post_startup(self):
+		if self._device is None:
+			logger.warning("No ESS device found. Deferring _post_startup.")
+			await asyncio.sleep(60) #wait 60 seconds, then try again.
+			asyncio.create_task(self._post_startup())
+			return
+
 		prior_version = version_str_to_tuple(C_LAST_RUN_VERSION.current_value)
 		current_version = version_str_to_tuple(VERSION)
 
-		if prior_version < version_str_to_tuple("1.0.1"):
-			#migrate efficiency figure stored. Only change defaults.
-			if C_EFFICIENCY.current_value == 90:
-				logger.debug("Migrating efficiency setting from 90% to 85 for better real-life matching.")
-				C_EFFICIENCY.current_value = 85
-				await C_EFFICIENCY.force_write_to_settings(self.settings_service)
+		if prior_version < version_str_to_tuple("1.0.3"):
+			#migrate efficiency figure stored. Only change defaults for VEBUS:
+			if isinstance(self._device, VebusDevice):
+				if C_EFFICIENCY.current_value == 90:
+					logger.debug("VEBUS: Migrating efficiency setting from 90% to 85 for better real-life matching.")
+					C_EFFICIENCY.current_value = 85
+					await C_EFFICIENCY.force_write_to_settings(self.settings_service)
 
 		#update last_run_version setting
 		C_LAST_RUN_VERSION.current_value = VERSION
@@ -1042,6 +1050,9 @@ class DynamicEss():
 		'''
 			Checks if all operational constraints are met. Then returns NO_ERROR.
 		'''
+		if C_MODE.current_value is None or C_MODE.current_value < 1:
+			return ErrorCode.DESS_DISABLED
+
 		if C_BATTERY_CAPACITY.current_value is None or C_BATTERY_CAPACITY.current_value <= 0.0:
 			return ErrorCode.BATTERY_CAPACITY_UNSET
 
@@ -1066,8 +1077,14 @@ class DynamicEss():
 		else:
 			if self.active or self.ready or self._dbusservice.get_item('/ErrorCode').value != error_code.value:
 				await self.pause(error_code)
-			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(ReactiveStrategy.ERROR_CODE.value)
-			log_on_delta(logging.ERROR, 'ConditionCheck', f"check_condition failed with {error_code}")
+
+			if error_code == ErrorCode.DESS_DISABLED:
+				self._dbusservice.get_item('/ReactiveStrategy').set_local_value(ReactiveStrategy.DESS_DISABLED.value)
+				log_on_delta(logging.INFO, 'ConditionCheck', "DynamicEss is disabled.")
+			else:
+				self._dbusservice.get_item('/ReactiveStrategy').set_local_value(ReactiveStrategy.ERROR_CODE.value)
+				log_on_delta(logging.ERROR, 'ConditionCheck', f"check_condition failed with {error_code}")
+
 			log_on_delta(logging.INFO, 'ChargeControl', None) #reset delta logging for ChargeControl.
 
 	async def pause(self, error_code:ErrorCode):
@@ -1095,6 +1112,15 @@ class DynamicEss():
 		self._dbusservice.get_item('/WindowToEVBattery').set_local_value(None)
 		self._dbusservice.get_item('/EvcsGxFlags').set_local_value(None)
 		self._device.self_consume(Restrictions.NONE, None) #no schedule, no restrictions.
+
+		#disconnect any EVCS if controlled.
+		#TODO: Shall this always happen, when DESS goes inactive?
+		for evcsid, evcs_delegate in self._evcs_delegates.items():
+			if EvcsGxFlags.EVCS_CONTROL_DISABLED not in evcs_delegate.gx_flags:
+				logger.info("Disconnecting EVCS {} due to DESS paused.".format(evcsid))
+				await evcs_delegate.end()
+				evcs_delegate.gx_flags = EvcsGxFlags.EVCS_CONTROL_DISABLED
+				await self.publish_evcs_flags() #update dbus with new flags.
 
 	def windows(self):
 		#generator to avoid recreation of all schedules over and over, when generally working on window 0 and 1.

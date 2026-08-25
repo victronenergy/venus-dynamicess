@@ -2,7 +2,6 @@ FILES =									\
 	dynamicess.py	  					\
 	globals.py							\
 	helper.py							\
-	solar_overhead.py					\
 	constants.py						\
 	ess_device.py						\
 	evcs_delegate.py					\

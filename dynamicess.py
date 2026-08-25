@@ -1111,7 +1111,9 @@ class DynamicEss():
 		self._dbusservice.get_item('/DischargeHysteresis').set_local_value(0)
 		self._dbusservice.get_item('/WindowToEVBattery').set_local_value(None)
 		self._dbusservice.get_item('/EvcsGxFlags').set_local_value(None)
-		self._device.self_consume(Restrictions.NONE, None) #no schedule, no restrictions.
+
+		if self._device is not None:
+			self._device.self_consume(Restrictions.NONE, None) #no schedule, no restrictions.
 
 		#disconnect any EVCS if controlled.
 		#TODO: Shall this always happen, when DESS goes inactive?

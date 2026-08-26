@@ -383,7 +383,7 @@ class EVCSDelegate():
 							self.add_flag(EvcsGxFlags.CHARGE_NOW_ACTIVE)
 							self.add_flag(EvcsGxFlags.CHARGING)
 							logger.info("{} | ChargeNow activated via EvcsVrmFlags.".format(self.unique_identifier))
-							self.power_setpoint = 32 * 235 #just charge max, whatever that will be.
+							self.power_setpoint = 3 * 32 * 235 #just charge max, whatever that will be.
 
 							if EvcsGxFlags.EMERGENCY_COUNTDOWN in self.gx_flags:
 								self.remove_flag(EvcsGxFlags.EMERGENCY_COUNTDOWN)

@@ -696,36 +696,6 @@ class DynamicEss():
 		target_soc_change = self.iteration_change_tracker.target_soc_change()
 		window_progress = w.get_window_progress(now) or 0
 
-		#Around MINSOC we need a special behaviour. We may encounter beeing way bellow minsoc, when
-		#resuming operation after a grid loss. Then, charging should happen immediately. In other cases
-		#we will allow to go 1% bellow minsoc, to avoid to frequent charging of 0.1% or sth.
-		if self._device.minsoc is not None and self._device.minsoc > 0:
-			#check if we need to leave emergency_charge_state
-			if (self.soc >= self._device.minsoc and self._is_emergency_recharge):
-				self._is_emergency_recharge = False #reset flag, we are back to normal operation.
-
-			#if we are equal or bellow minsoc, switch to the reactive strategy ESS_LOW_SOC.
-			#it does not yet do anything, just indicate we are in a exceptional state.
-			#if we have started the recharging, this is not eligible anymore.
-
-			if (self.soc <= round(self._device.minsoc, self.soc_precision) and not self._is_emergency_recharge):
-				reactive_strategy = ReactiveStrategy.ESS_LOW_SOC
-
-			if (self.soc <= round(self._device.minsoc - 1, self.soc_precision) or self._is_emergency_recharge):
-				# we are 1% bellow minsoc, charge immediately, no matter what the schedule says.
-				# drop restrictions present.
-				reactive_strategy = ReactiveStrategy.CHARGE_TO_MINSOC
-				self._is_emergency_recharge = True #set a flag, so we can mainin this state even if soc is raising.
-
-				#if we are only in the range of upto 1%, we use 25% of the maximum chargerate
-				#if we are bellow 1% of minsoc, we use 100% of the maximum chargerate.
-				delta = round(round(self._device.minsoc, self.soc_precision) - self.soc, 0)
-				restrictions = Restrictions.NONE #drop restrictions, we need to charge to minsoc.
-				if delta <= 1:
-					self.chargerate = round((C_BATTERY_CHARGE_LIMIT.current_value or 0) * 1000 * self.oneway_efficiency * 0.25)
-				else:
-					self.chargerate = round((C_BATTERY_CHARGE_LIMIT.current_value or 0) * 1000 * self.oneway_efficiency)
-
 		if w.strategy == Strategy.SELFCONSUME and reactive_strategy is None:
 			self.chargerate = None #No scheduled chargerate in this case.
 			self.targetsoc = None

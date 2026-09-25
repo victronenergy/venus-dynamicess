@@ -1,4 +1,5 @@
 import enum
+import sys
 
 from helper import Configurable
 from enum import Enum, IntFlag
@@ -187,11 +188,6 @@ C_DISABLE_EVCS_CONTROL = Configurable(
 	'/Settings/DynamicEss/DisableEvcsControl',
 	'ol_disable_evcs_control', 1, 0, 1, CONFIGURABLES
 )
-C_MODE = Configurable(
-	None,
-	'/Settings/DynamicEss/Mode',
-	'dess_mode', 0, 0, 4, CONFIGURABLES
-)
 C_BATTERY_CAPACITY = Configurable(
 	None,
 	'/Settings/DynamicEss/BatteryCapacity',
@@ -256,6 +252,46 @@ C_EVCS_VRM_FLAGS = Configurable(
 	None,
 	'/Settings/DynamicEss/EvcsVrmFlags',
 	'dess_evcsvrmflags', "{}", "", "", CONFIGURABLES, True
+)
+C_OVERRIDE_TARGET_SOC = Configurable(
+	'/Overrides/TargetSoc',
+	None,
+	None, 0.0, 0.0, 100.0, CONFIGURABLES
+)
+C_OVERRIDE_START = Configurable(
+	'/Overrides/Start',
+	None,
+	None, 0, 0, sys.maxsize, CONFIGURABLES
+)
+C_OVERRIDE_DURATION = Configurable(
+	'/Overrides/Duration',
+	None,
+	None, 0, 0, sys.maxsize, CONFIGURABLES
+)
+C_OVERRIDE_RESTRICTIONS = Configurable(
+	'/Overrides/Restrictions',
+	None,
+	None, 0, 0, sum([v.value for v in Restrictions]), CONFIGURABLES
+)
+C_OVERRIDE_STRATEGY = Configurable(
+	'/Overrides/Strategy',
+	None,
+	None, 0, 0, max([v.value for v in Strategy]), CONFIGURABLES
+)
+C_OVERRIDE_FLAGS = Configurable(
+	'/Overrides/Flags',
+	None,
+	None, 0, 0, sum([v.value for v in Flags]), CONFIGURABLES
+)
+C_OVERRIDE_ALLOW_GRID_FEEDIN = Configurable(
+	'/Overrides/AllowGridFeedin',
+	None,
+	None, 0, 0, 1, CONFIGURABLES
+)
+C_OVERRIDE_TO_EV_BATTERY = Configurable(
+	'/Overrides/ToEvBattery',
+	None,
+	None, "{}", "", "", CONFIGURABLES, True
 )
 
 # Configure logging to output to stderr (which will be piped to multilog)

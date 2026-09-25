@@ -19,9 +19,9 @@ from time import time
 from typing import Dict, Optional, Tuple, cast, Callable
 
 #aiovelib
-from aiovelib.client import Service as ObservableService, DbusException, servicetype
-from aiovelib.service import Item, Service, IntegerItem, TextItem, DoubleItem
-from aiovelib.localsettings import SETTINGS_SERVICE, Setting, SettingsService
+from aiovelib.client import Service as ObservableService, DbusException, servicetype #type:ignore
+from aiovelib.service import Item, Service, IntegerItem, TextItem, DoubleItem #type:ignore
+from aiovelib.localsettings import SETTINGS_SERVICE, Setting, SettingsService #type:ignore
 
 try:
 	from dbus_fast.constants import BusType
@@ -74,9 +74,16 @@ from globals import (
 	C_DISABLE_EVCS_CONTROL,
 	C_EFFICIENCY,
 	C_LAST_RUN_VERSION,
-	C_MODE,
 	C_OPERATING_MODE,
 	C_ENABLE_DEBUG_LOGGING,
+	C_OVERRIDE_ALLOW_GRID_FEEDIN,
+	C_OVERRIDE_DURATION,
+	C_OVERRIDE_FLAGS,
+	C_OVERRIDE_RESTRICTIONS,
+	C_OVERRIDE_START,
+	C_OVERRIDE_STRATEGY,
+	C_OVERRIDE_TARGET_SOC,
+	C_OVERRIDE_TO_EV_BATTERY,
 	Mode,
 	Capabilities,
 	ChangeIndicator,
@@ -183,7 +190,8 @@ class DynamicEss():
 		settings_service:SettingsService = await wait_for_settings(self._bus, self._on_settings_changed)
 
 		for c in CONFIGURABLES:
-			await settings_service.add_settings(Setting(c.settings_path, c.default_value, c.min_value, c.max_value, False, c.settings_key))
+			if c.settings_key is not None and c.settings_path is not None:
+				await settings_service.add_settings(Setting(c.settings_path, c.default_value, c.min_value, c.max_value, False, c.settings_key))
 
 		#We also need settings for the 48 schedule windows. They are not configurables,
 		#because they are only used/accessed in a iterative way.
@@ -321,7 +329,8 @@ class DynamicEss():
 			logger.debug("dbus-change on {} detected: {}".format(item.path, value))
 			configurable.current_value = value
 			#required cause we modified the internal "current_value" of the configurable.
-			await configurable.force_write_to_settings(self.settings_service)
+			if configurable.settings_path is not None and configurable.settings_key is not None:
+				await configurable.force_write_to_settings(self.settings_service)
 
 			#accept the change
 			item.set_local_value(value)
@@ -1020,9 +1029,6 @@ class DynamicEss():
 		'''
 			Checks if all operational constraints are met. Then returns NO_ERROR.
 		'''
-		if C_MODE.current_value is None or C_MODE.current_value < 1:
-			return ErrorCode.DESS_DISABLED
-
 		if C_BATTERY_CAPACITY.current_value is None or C_BATTERY_CAPACITY.current_value <= 0.0:
 			return ErrorCode.BATTERY_CAPACITY_UNSET
 
@@ -1096,6 +1102,36 @@ class DynamicEss():
 
 	def windows(self):
 		#generator to avoid recreation of all schedules over and over, when generally working on window 0 and 1.
+		#first, yield the override window, if it exists.
+		override_start = C_OVERRIDE_START.current_value
+		override_duration = C_OVERRIDE_DURATION.current_value
+		override_targetsoc = C_OVERRIDE_TARGET_SOC.current_value
+		override_allow_feedin = C_OVERRIDE_ALLOW_GRID_FEEDIN.current_value
+		override_restriction = C_OVERRIDE_RESTRICTIONS.current_value
+		override_strategy = C_OVERRIDE_STRATEGY.current_value
+		override_flags = C_OVERRIDE_FLAGS.current_value
+		override_toevbattery = C_OVERRIDE_TO_EV_BATTERY.current_value
+
+		if override_start is not None and override_start <= datetime.now(timezone.utc).timestamp() \
+			and override_duration is not None and override_start + override_duration > datetime.now(timezone.utc).timestamp():
+			logger.debug("Yielding override window starting at {} with duration {}".format(
+				datetime.fromtimestamp(override_start),
+				override_duration
+			))
+
+			yield DynamicEssWindow(
+				datetime.fromtimestamp(override_start),
+				override_duration,
+				None,
+				override_targetsoc,
+				override_allow_feedin,
+				override_restriction,
+				override_strategy,
+				override_flags,
+				-1,
+				override_toevbattery
+			)
+
 		for i in range(NUM_SCHEDULES):
 			start = self.settings_service.get_value('/Settings/DynamicEss/Schedule/{}/Start'.format(i))
 			duration = self.settings_service.get_value('/Settings/DynamicEss/Schedule/{}/Duration'.format(i))

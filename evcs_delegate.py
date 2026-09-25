@@ -30,7 +30,6 @@ from constants import (
 )
 
 from globals import(
-	 C_MODE,
 	 C_DISABLE_EVCS_CONTROL,
 	 C_EV_EMERGENCY_SETPOINT,
 	 C_EV_EMERGENCY_START,
@@ -163,14 +162,7 @@ class EVCSDelegate():
 				await self.end()
 			self.gx_flags = EvcsGxFlags.EVCS_CONTROL_DISABLED #mark as control disabled.
 
-		#check if dynamicess was disabled. If so, drop the connection and mark as control disabled.
-		if C_MODE.current_value < 1:
-			if not self.gx_flags & EvcsGxFlags.EVCS_CONTROL_DISABLED:
-				logger.info("{} | DynamicEss is disabled via setting. Dropping S2 Connection and marking as control disabled.".format(self.unique_identifier))
-				await self.end()
-			self.gx_flags = EvcsGxFlags.EVCS_CONTROL_DISABLED #mark as control disabled.
-
-		if C_DISABLE_EVCS_CONTROL.current_value == 0 and C_MODE.current_value > 0:
+		if C_DISABLE_EVCS_CONTROL.current_value == 0:
 			if self.gx_flags & EvcsGxFlags.EVCS_CONTROL_DISABLED:
 				logger.info("{} | EVCS Control is no longer disabled. Re-enabling.".format(self.unique_identifier))
 				#just gently remove the disabled flag. The retry timer will eventually reconnect, if needed.

@@ -103,7 +103,6 @@ class VEBusService(ObservableService):
 class SystemService(ObservableService):
 	servicetype = SYSTEM_SERVICE
 	paths = [
-		#FIXME: Needs all paths no longer part of the own service.
 		'/Control/ActiveSocLimit',
 		'/DynamicEss/ChargeControlAcquired',
 		'/Control/EssState',

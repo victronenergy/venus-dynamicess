@@ -242,7 +242,7 @@ class DynamicEss():
 		#Output Paths we use.
 		dbusservice.add_item(IntegerItem('/Capabilities', value=sum(c.value for c in Capabilities)))
 		dbusservice.add_item(IntegerItem('/NumberOfSchedules', value=NUM_SCHEDULES))
-		dbusservice.add_item(IntegerItem('/Active', value=0, text=lambda v: Mode(v).name if v in Mode._value2member_map_ else 'Unknown'))
+		dbusservice.add_item(IntegerItem('/Active', value=0, text=lambda v: 'Yes' if v else 'Inactive'))
 		dbusservice.add_item(DoubleItem('/TargetSoc', value=0.0, text=lambda v: '{}%'.format(v)))
 		dbusservice.add_item(DoubleItem('/WindowSoc', value=0.0, text=lambda v: '{}%'.format(v)))
 		dbusservice.add_item(DoubleItem('/MinimumSoc', value=None, text=lambda v: '{}%'.format(v)))
@@ -250,13 +250,13 @@ class DynamicEss():
 		dbusservice.add_item(IntegerItem('/LastScheduledStart', value=None, text=lambda v: '{}'.format(datetime.fromtimestamp(v).strftime('%Y-%m-%d %H:%M:%S'))))
 		dbusservice.add_item(IntegerItem('/LastScheduledEnd', value=None, text=lambda v: '{}'.format(datetime.fromtimestamp(v).strftime('%Y-%m-%d %H:%M:%S'))))
 		dbusservice.add_item(DoubleItem('/ChargeRate', value=0, text=lambda v: '{}W'.format(v)))
-		dbusservice.add_item(IntegerItem('/WindowSlot', value=0))
+		dbusservice.add_item(IntegerItem('/WindowSlot', value=0, text=lambda v: 'Override Paths' if v == -1 else v))
 		dbusservice.add_item(IntegerItem('/Strategy', value=None, text=lambda v: Strategy(v).name))
-		dbusservice.add_item(IntegerItem('/Ready', value=0, text=lambda v: 'Ready' if v else 'Not Ready'))
+		dbusservice.add_item(IntegerItem('/Ready', value=0, text=lambda v: 'Yes' if v else 'Not Ready'))
 		dbusservice.add_item(IntegerItem('/WorkingSocPrecision', value=0))
 		dbusservice.add_item(IntegerItem('/ReactiveStrategy', value=None, text=lambda v: ReactiveStrategy(v).name if v in ReactiveStrategy._value2member_map_ else 'Unknown'))
 		dbusservice.add_item(IntegerItem('/Restrictions', value=None, text=lambda v: '{}'.format(Restrictions(v).name)))
-		dbusservice.add_item(IntegerItem('/AllowGridFeedIn', value=None))
+		dbusservice.add_item(IntegerItem('/AllowGridFeedIn', value=None, text=lambda v: 'Yes' if v else 'No'))
 		dbusservice.add_item(IntegerItem('/Flags', value=None, text=lambda v: '{}'.format(Flags(v).name)))
 		dbusservice.add_item(DoubleItem('/AvailableOverhead', value=None, text=lambda v: '{}W'.format(v)))
 		dbusservice.add_item(DoubleItem('/ChargeHysteresis', value=0, text=lambda v: '{}%'.format(v)))
@@ -475,6 +475,7 @@ class DynamicEss():
 			if self._aiomonitor.get_value(SYSTEM_SERVICE, '/DynamicEss/ChargeControlAcquired') != 1:
 				#We don't have the charge control token, so we can't do anything. Wait for next loop to check again.
 				log_on_delta(logging.WARNING, 'ChargeControl', "Charge control not acquired. Waiting for acquisition ...")
+				await self.pause(ErrorCode.CHARGE_CONTROL_NOT_ACQUIRED)
 				return True
 
 			log_on_delta(logging.INFO, 'ChargeControl', "Charge control acquired. Proceeding with control.")
@@ -1051,6 +1052,7 @@ class DynamicEss():
 			self.ready = True
 			log_on_delta(logging.INFO, 'ConditionCheck', "All operational constraints met. Setting Ready-Flag.")
 		else:
+			self.ready = False #makes the system calc delegate release charge control as long as we are inoperable.
 			if self.active or self.ready or self._dbusservice.get_item('/ErrorCode').value != error_code.value:
 				await self.pause(error_code)
 
@@ -1075,7 +1077,6 @@ class DynamicEss():
 		self._dbusservice.get_item('/ChargeRate').set_local_value(None)
 		self._dbusservice.get_item('/ErrorCode').set_local_value(error_code.value)
 		self._dbusservice.get_item('/Active').set_local_value(0) #Inactive
-		self._dbusservice.get_item('/Ready').set_local_value(0) #Not ready.
 		self._dbusservice.get_item('/Strategy').set_local_value(None)
 		self._dbusservice.get_item('/Restrictions').set_local_value(None)
 		self._dbusservice.get_item('/AllowGridFeedIn').set_local_value(None)

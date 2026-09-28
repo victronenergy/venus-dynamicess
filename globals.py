@@ -23,6 +23,7 @@ class ErrorCode(int, Enum):
 	SOC_LOW = 4
 	BATTERY_CAPACITY_UNSET = 5
 	DESS_DISABLED = 6
+	CHARGE_CONTROL_NOT_ACQUIRED = 7
 
 class Strategy(int, Enum):
 	TARGETSOC = 0		#ME-Coping: grid / grid

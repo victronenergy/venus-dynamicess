@@ -250,7 +250,7 @@ class DynamicEss():
 		dbusservice.add_item(IntegerItem('/LastScheduledStart', value=None, text=lambda v: '{}'.format(datetime.fromtimestamp(v).strftime('%Y-%m-%d %H:%M:%S'))))
 		dbusservice.add_item(IntegerItem('/LastScheduledEnd', value=None, text=lambda v: '{}'.format(datetime.fromtimestamp(v).strftime('%Y-%m-%d %H:%M:%S'))))
 		dbusservice.add_item(DoubleItem('/ChargeRate', value=0, text=lambda v: '{}W'.format(v)))
-		dbusservice.add_item(IntegerItem('/WindowSlot', value=0, text=lambda v: 'Override Paths' if v == -1 else v))
+		dbusservice.add_item(IntegerItem('/WindowSlot', value=0, text=lambda v: 'Override Paths' if v is not None and v == -1 else str(v)))
 		dbusservice.add_item(IntegerItem('/Strategy', value=None, text=lambda v: Strategy(v).name))
 		dbusservice.add_item(IntegerItem('/Ready', value=0, text=lambda v: 'Yes' if v else 'Not Ready'))
 		dbusservice.add_item(IntegerItem('/WorkingSocPrecision', value=0))
@@ -1090,7 +1090,7 @@ class DynamicEss():
 		self._dbusservice.get_item('/EvcsGxFlags').set_local_value(None)
 
 		if self._device is not None:
-			self._device.self_consume(Restrictions.NONE, None) #no schedule, no restrictions.
+			self._device.deactivate()
 
 		#disconnect any EVCS if controlled.
 		#TODO: Shall this always happen, when DESS goes inactive?

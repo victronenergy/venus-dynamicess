@@ -49,7 +49,7 @@ class VebusDevice(EssDevice):
 		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/FeedInExcess', 0 if allow_feedin is None else 2 if allow_feedin else 1)
 
 	def _set_charge_power(self, v):
-		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/MaxChargePower', None if v is None else max(v, 50))
+		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/MaxChargePower', -1.0 if v is None else max(v, 50))
 
 	def check_conditions(self) -> ErrorCode:
 		# Can't do anything unless we have a minsoc, and the ESS assistant
@@ -185,5 +185,6 @@ class VebusDevice(EssDevice):
 		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/Setpoint', None)
 		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/ForceCharge', 0)
 		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/MaxDischargePower', -1.0)
+		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/MaxChargePower', -1.0)
 		self._aiomonitor.set_value_async(HUB4_SERVICE, '/Overrides/FeedInExcess', 0)
 		self._set_charge_power(None)

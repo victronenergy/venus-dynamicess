@@ -414,7 +414,8 @@ class EVCSDelegate():
 					logger.debug("{} | Stopping active emergency charge due to valid schedule arrived.".format(self.unique_identifier))
 					self.emergency_timer_start = None
 
-				scheduled_power_setpoint = window.to_ev[str(self.instance)] * 4000 #convert kWh/15min to W
+				# Convert scheduled energy in kWh to average power in W over this window.
+				scheduled_power_setpoint = window.to_ev[str(self.instance)] * 3_600_000 / window.duration if window.duration > 0 else 0
 
 				if scheduled_power_setpoint == 0:
 					#stop regular charging?

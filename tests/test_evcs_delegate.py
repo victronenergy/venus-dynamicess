@@ -1,14 +1,18 @@
+import json
 import os
 import sys
 import unittest
+from datetime import datetime, timezone
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, os.path.join(_REPO_ROOT, "ext", "aiovelib"))
 
 import helper  # noqa: E402  (must be imported before globals/evcs_delegate -- circular import)
-from globals import EvcsGxFlags, C_DISABLE_EVCS_CONTROL  # noqa: E402
+from globals import EvcsGxFlags, C_DISABLE_EVCS_CONTROL, C_EVCS_VRM_FLAGS  # noqa: E402
 from evcs_delegate import EVCSDelegate  # noqa: E402
+from dynamicess_window import DynamicEssWindow  # noqa: E402
+from s2python.common import ControlType  # noqa: E402
 
 
 _UNSET = object()
@@ -123,6 +127,61 @@ class EvcsS2ActiveLivenessTest(unittest.IsolatedAsyncioTestCase):
         delegate.service.set("/S2/0/Active", 0)
         await delegate._check_conditions()
         self.assertNotIn(EvcsGxFlags.CONTROLLABLE, delegate.gx_flags)
+
+
+class EvcsScheduledSetpointTest(unittest.IsolatedAsyncioTestCase):
+    """Scheduled kWh in window.to_ev must be converted to average W over window.duration (seconds)."""
+
+    def _make_delegate(self):
+        C_DISABLE_EVCS_CONTROL.current_value = 0
+        C_EVCS_VRM_FLAGS.current_value = "{}"
+        delegate = EVCSDelegate(FakeService(), 40, FakeMonitor(), DummyDess())
+        delegate.gx_flags = EvcsGxFlags.CONTROLLABLE
+        delegate.active_control_type = ControlType.OPERATION_MODE_BASED_CONTROL
+        delegate.ombc_active_operation_mode = object()
+        delegate.ombc_system_description = object()
+
+        async def _noop():
+            pass
+
+        delegate._approach_setpoint = _noop
+        return delegate
+
+    def _make_window(self, kwh, duration):
+        return DynamicEssWindow(
+            datetime.now(timezone.utc), duration, 50, 50, True, 0, 0, 0, 0,
+            json.dumps({"40": kwh}))
+
+    async def _run(self, kwh, duration):
+        delegate = self._make_delegate()
+        await delegate.loop(self._make_window(kwh, duration), datetime.now(timezone.utc))
+        return delegate
+
+    async def test_15min_window(self):
+        delegate = await self._run(kwh=1.0, duration=900)
+        self.assertAlmostEqual(delegate.power_setpoint, 4000)
+        self.assertIn(EvcsGxFlags.CHARGING, delegate.gx_flags)
+        self.assertIn(EvcsGxFlags.SCHEDULED, delegate.gx_flags)
+
+    async def test_60min_window(self):
+        delegate = await self._run(kwh=2.0, duration=3600)
+        self.assertAlmostEqual(delegate.power_setpoint, 2000)
+
+    async def test_30min_window(self):
+        delegate = await self._run(kwh=1.5, duration=1800)
+        self.assertAlmostEqual(delegate.power_setpoint, 3000)
+
+    async def test_zero_duration_does_not_divide_by_zero(self):
+        delegate = await self._run(kwh=1.0, duration=0)
+        self.assertEqual(delegate.power_setpoint, 0)
+
+    async def test_zero_energy_stops_charging(self):
+        delegate = self._make_delegate()
+        delegate.add_flag(EvcsGxFlags.CHARGING)
+        delegate.power_setpoint = 4000
+        await delegate.loop(self._make_window(0, 900), datetime.now(timezone.utc))
+        self.assertEqual(delegate.power_setpoint, 0)
+        self.assertNotIn(EvcsGxFlags.CHARGING, delegate.gx_flags)
 
 
 if __name__ == "__main__":

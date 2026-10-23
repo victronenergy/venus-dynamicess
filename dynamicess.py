@@ -986,7 +986,7 @@ class DynamicEss():
 		"""
 			returns the unmodified soc. Required to detect actual precission.
 		"""
-		return self._aiomonitor.get_value(SYSTEM_SERVICE, "/Dc/Battery/Soc", 0.0)
+		return self._aiomonitor.get_value(SYSTEM_SERVICE, "/Dc/Battery/Soc")
 
 	@property
 	def soc_precision(self) -> int:
@@ -1036,7 +1036,7 @@ class DynamicEss():
 		if self._device is None:
 			return ErrorCode.NO_ESS
 
-		if self.soc is None:
+		if self.soc_raw is None:
 			return ErrorCode.SOC_LOW
 
 		#finally, validate device has no error as well.

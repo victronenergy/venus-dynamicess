@@ -5,7 +5,7 @@ from helper import Configurable
 from enum import Enum, IntFlag
 import logging
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 BRANCH = ""
 
 class Mode(int, Enum):

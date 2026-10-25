@@ -12,6 +12,7 @@ import argparse
 import logging
 import signal
 import asyncio
+import traceback
 import dbus #type:ignore
 
 from datetime import datetime, timedelta, timezone
@@ -541,8 +542,13 @@ class DynamicEss():
 			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(final_strategy.value)
 			self.iteration_change_tracker.done(final_strategy)
 
+			#iteration completed without exception, so a previously logged one has recovered or first run.
+			log_on_delta(logging.INFO, 'ControlLoopException', "Control Loop executed successfully (again or first time).")
+
 		except Exception as ex:
-			logger.log(logging.FATAL, "Unexpected exception inside Control Loop.", exc_info = ex)
+			#log only once per distinct exception (incl. traceback), until an iteration completes successfully again.
+			trace = "".join(traceback.format_exception(type(ex), ex, ex.__traceback__))
+			log_on_delta(logging.FATAL, 'ControlLoopException', "Unexpected exception inside Control Loop.\n{}".format(trace))
 			final_strategy = ReactiveStrategy.SELFCONSUME_UNEXPECTED_EXCEPTION
 			self._dbusservice.get_item('/ReactiveStrategy').set_local_value(final_strategy.value)
 

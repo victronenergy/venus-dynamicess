@@ -29,25 +29,30 @@ class SettingsMonitor(Monitor):
 		}, **kwargs)
 
 delta_logs = {}
-def log_on_delta(level:int, key:str, message:str, tenant:str="dess"):
+def log_on_delta(level:int, key:str, message:str, tenant:str="dess") -> bool:
 	'''
 		Logs a recurringly generated message only if the content changes to avoid spaming
-		log files, but leave a note about an important warning/info.
+		log files, but leave a note about an important warning/info. logging none will reset
+		the delta state.
+		Returns true if a delta	log was performed, false if not. (False on None-reset as well)
 	'''
 	key = f"{tenant}_{key}"
 
 	if message is None:
 		if key in delta_logs:
 			del delta_logs[key]
-		return
+		return False
 
 	if key not in delta_logs:
 		delta_logs[key] = message
 		logger.log(level, message)
+		return True
 	else:
 		if delta_logs[key] != message:
 			delta_logs[key] = message
 			logger.log(level, message)
+			return True
+	return False
 
 def version_str_to_tuple(version_str):
 	""" Converts a version string to a tuple of integers for easy comparison. """

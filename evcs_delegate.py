@@ -241,7 +241,7 @@ class EVCSDelegate():
 				#operation_mode_factor to let the evces know what it maximum should consume.
 				if self.power_setpoint >= 0:
 					if p_min <= self.power_setpoint and p_max >= self.power_setpoint:
-						omf = self.power_setpoint / p_max if p_max > 0 else 0
+						omf = (self.power_setpoint - p_min) / (p_max-p_min) if (p_max-p_min) > 0 else 0
 						next_mode = op_mode
 						next_mode_delta = 0 #we can only assume to be spot on.
 						next_omf = omf
@@ -258,7 +258,7 @@ class EVCSDelegate():
 		else:
 			if next_mode.id != self.ombc_active_operation_mode.id:
 				if next_omf is None:
-					p_total = sum([p..end_of_range for p in next_mode.power_ranges])
+					p_total = sum([p.end_of_range for p in next_mode.power_ranges])
 					delta = abs(p_total - self.power_setpoint)
 
 					#no handler needed, we deal with ombc status confirmations instead.

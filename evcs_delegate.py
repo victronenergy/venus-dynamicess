@@ -241,17 +241,15 @@ class EVCSDelegate():
 				#operation_mode_factor to let the evces know what it maximum should consume.
 				if self.power_setpoint >= 0:
 					if p_min <= self.power_setpoint and p_max >= self.power_setpoint:
-						omf = (self.power_setpoint - p_min) / (p_max-p_min) if (p_max-p_min) > 0 else 0
 						next_mode = op_mode
 						next_mode_delta = 0 #we can only assume to be spot on.
-						next_omf = omf
+						next_omf = round((self.power_setpoint - p_min) / (p_max-p_min) if (p_max-p_min) > 0 else 0, 2)
 				else:
 					# Negative power setpoint, we want to charge at minimum. That equals omf = 0.0 for a range state.
 					if p_min > 0 and p_max > 0:
-						omf = 0.0
 						next_mode = op_mode
 						next_mode_delta = 0 #we can only assume to be spot on.
-						next_omf = omf
+						next_omf = 0.0
 
 		if next_mode is None:
 			logger.warning("{} | Unable to find a operation-mode close to {}W".format(self.unique_identifier, self.power_setpoint))
@@ -281,7 +279,11 @@ class EVCSDelegate():
 						round(delta) if self.power_setpoint >= 0 else "?"))
 				else:
 					# This is a range instruction with omf to be send.
-					p_total = (sum([p.end_of_range for p in next_mode.power_ranges]) - sum([p.start_of_range for p in next_mode.power_ranges])) * next_omf
+					p_total = sum([p.start_of_range for p in next_mode.power_ranges]) + \
+							  (
+							     sum([p.end_of_range for p in next_mode.power_ranges]) - \
+								 sum([p.start_of_range for p in next_mode.power_ranges])
+							  ) * next_omf
 
 					await self._s2_send_message(
 						OMBCInstruction(

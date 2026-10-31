@@ -211,49 +211,95 @@ class EVCSDelegate():
 		#check which mode matches best.
 		next_mode = None
 		next_mode_delta = 99999
+		next_omf = None
 
 		for op_mode_id, op_mode in eligible_operationmodes.items():
-			if op_mode is not None:
-				p_total = sum([p.end_of_range for p in op_mode.power_ranges])
-				if self.power_setpoint >= 0:
-					delta = abs(p_total - self.power_setpoint)
-					if delta < next_mode_delta:
-						next_mode_delta = delta
-						next_mode = op_mode
-				else:
-					#-1 means charge at minimum, whatever that will be. thus, the first mode that could be found
-					# and does not equal standby.
-					delta = abs(p_total - self.power_setpoint)
-					if delta < next_mode_delta:
-						if p_total > 0:
+			# get min and max totals of each mode.
+			p_min = sum([p.start_of_range for p in op_mode.power_ranges])
+			p_max = sum([p.end_of_range for p in op_mode.power_ranges])
+
+			# Regular model: Concrete Steps per A.
+			if p_min == p_max:
+				if op_mode is not None:
+					if self.power_setpoint >= 0:
+						delta = abs(p_max - self.power_setpoint)
+						if delta < next_mode_delta:
+							next_mode_delta = delta
 							next_mode = op_mode
-							next_mode_delta = delta #so we know, it's emergency selection.
+							next_omf = None #fixed
+					else:
+						#-1 means charge at minimum, whatever that will be. thus, the first mode that could be found
+						# and does not equal standby.
+						delta = abs(p_max - self.power_setpoint)
+						if delta < next_mode_delta:
+							if p_max > 0:
+								next_mode = op_mode
+								next_mode_delta = delta #so we know, it's emergency selection.
+								next_omf = None #fixed
+			else:
+				#this state is a power-range. We can enter it, when suitable, but need to send a adjusted
+				#operation_mode_factor to let the evces know what it maximum should consume.
+				if self.power_setpoint >= 0:
+					if p_min <= self.power_setpoint and p_max >= self.power_setpoint:
+						omf = self.power_setpoint / p_max if p_max > 0 else 0
+						next_mode = op_mode
+						next_mode_delta = 0 #we can only assume to be spot on.
+						next_omf = omf
+				else:
+					# Negative power setpoint, we want to charge at minimum. That equals omf = 0.0 for a range state.
+					if p_min > 0 and p_max > 0:
+						omf = 0.0
+						next_mode = op_mode
+						next_mode_delta = 0 #we can only assume to be spot on.
+						next_omf = omf
 
 		if next_mode is None:
 			logger.warning("{} | Unable to find a operation-mode close to {}W".format(self.unique_identifier, self.power_setpoint))
 		else:
 			if next_mode.id != self.ombc_active_operation_mode.id:
-				p_total = sum([p.end_of_range for p in next_mode.power_ranges])
-				delta = abs(p_total - self.power_setpoint)
+				if next_omf is None:
+					p_total = sum([p..end_of_range for p in next_mode.power_ranges])
+					delta = abs(p_total - self.power_setpoint)
 
-				#no handler needed, we deal with ombc status confirmations instead.
-				await self._s2_send_message(
-					OMBCInstruction(
-						message_id = uuid.uuid4(),
-						id = uuid.uuid4(),
-						execution_time = datetime.now(timezone.utc),
-						operation_mode_id = next_mode.id,
-						operation_mode_factor = 1.0,
-						abnormal_condition=False
+					#no handler needed, we deal with ombc status confirmations instead.
+					await self._s2_send_message(
+						OMBCInstruction(
+							message_id = uuid.uuid4(),
+							id = uuid.uuid4(),
+							execution_time = datetime.now(timezone.utc),
+							operation_mode_id = next_mode.id,
+							operation_mode_factor = 1.0,
+							abnormal_condition=False #Todo: For the jump to 0 we use this. EVCS is not yet validating that.
+						)
 					)
-				)
 
-				logger.debug("{} | Sending instruction to switch to operation mode {} (Advertised power {}W) to approach target setpoint {}W. (Delta: {}W)".format(
-					self.unique_identifier,
-					next_mode.diagnostic_label,
-					round(p_total),
-					round(self.power_setpoint) if self.power_setpoint >= 0 else "MIN",
-					round(delta) if self.power_setpoint >= 0 else "?"))
+					logger.debug("{} | Sending instruction to switch to operation mode {} (Advertised power {}W) to approach target setpoint {}W. (Delta: {}W)".format(
+						self.unique_identifier,
+						next_mode.diagnostic_label,
+						round(p_total),
+						round(self.power_setpoint) if self.power_setpoint >= 0 else "MIN",
+						round(delta) if self.power_setpoint >= 0 else "?"))
+				else:
+					# This is a range instruction with omf to be send.
+					p_total = (sum([p.end_of_range for p in next_mode.power_ranges]) - sum([p.start_of_range for p in next_mode.power_ranges])) * next_omf
+
+					await self._s2_send_message(
+						OMBCInstruction(
+							message_id = uuid.uuid4(),
+							id = uuid.uuid4(),
+							execution_time = datetime.now(timezone.utc),
+							operation_mode_id = next_mode.id,
+							operation_mode_factor = next_omf,
+							abnormal_condition=False #Todo: For the jump to 0 we use this. EVCS is not yet validating that.
+						)
+					)
+
+					logger.debug("{} | Sending range instruction to operation mode {} with operation mode factor {} (expected power {}W) to approach target setpoint {}W.".format(
+						self.unique_identifier,
+						next_mode.diagnostic_label,
+						next_omf,
+						round(p_total),
+						round(self.power_setpoint) if self.power_setpoint >= 0 else "MIN"))
 
 	async def _on_timer_retry_connection(self):
 		'''

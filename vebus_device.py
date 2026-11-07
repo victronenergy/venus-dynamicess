@@ -92,7 +92,7 @@ class VebusDevice(EssDevice):
 		# Fast charge, or controlled charge?
 		fast_charge_clearance = True #Defaults to true, if we have no limit or can't determine technical limits, we just go for it (legacy behaviour).
 
-		if fast_charge_requested and self._dynamic_ess.battery_charge_limit is not None and self._dynamic_ess.get_charge_power_capability() is not None:
+		if fast_charge_requested and C_BATTERY_CHARGE_LIMIT.current_value is not None and self._dynamic_ess.get_charge_power_capability() is not None:
 			# limits and technical capabilities are known. So, only apply fast charge, if limit would be implicit obeyed.
 			fast_charge_clearance = self._dynamic_ess.get_charge_power_capability() <= C_BATTERY_CHARGE_LIMIT.current_value / self._dynamic_ess.oneway_efficiency * 1000
 

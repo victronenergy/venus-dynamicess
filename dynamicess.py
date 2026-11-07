@@ -637,9 +637,9 @@ class DynamicEss():
 				duration = abs((end - now).total_seconds())
 				chargerate = round((percentage * C_BATTERY_CAPACITY.current_value * 36000) / duration)
 
-				logger.debug("Charging from {}% to {}% in {:.1f}s requires a {:.0f}W DC rate.".format(
-					start_soc, end_soc, duration, chargerate
-				))
+				#logger.debug("Charging from {}% to {}% in {:.1f}s requires a {:.0f}W DC rate.".format(
+				#	start_soc, end_soc, duration, chargerate
+				#))
 
 				#Discharge and charge has two different limits for calculation. Scheduler sees the limitation on the AC-rate.
 				#thus, we will limit the dc rate to something above or bellow the desired limit, depending on the systems efficiency factor.
@@ -1183,7 +1183,7 @@ class DynamicEss():
 		  None is to be distinguished from 0 (which means no charging allowed by the bms)
 		'''
 
-		battery = self._dbusservice.get_item("/ActiveBmsService").value
+		battery = self._aiomonitor.get_value(SYSTEM_SERVICE, '/ActiveBmsService')
 
 		# first, try to obtain values from the bms service.
 		if battery is not None and battery != "":

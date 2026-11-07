@@ -103,6 +103,7 @@ class VEBusService(ObservableService):
     paths = [
 		'/Connected',
 		'/Hub4/AssistantId',
+		'/ActiveBmsService'
 	]
 
 class SystemService(ObservableService):

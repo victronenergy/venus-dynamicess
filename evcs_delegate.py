@@ -11,7 +11,18 @@ from aiovelib.client import Service as ObservableService, servicetype
 from dynamicess_window import ScheduledWindow
 from helper import AioMonitor
 from s2python.s2_parser import S2MessageComponent, S2Parser
-from s2python.common import Handshake, HandshakeResponse, PowerMeasurement, ReceptionStatusValues, ResourceManagerDetails, ReceptionStatus, ControlType, SelectControlType
+from s2python.common import (
+	Handshake,
+	HandshakeResponse,
+	PowerMeasurement,
+	PowerMeasurement,
+	ReceptionStatusValues,
+	ResourceManagerDetails,
+	ReceptionStatus,
+	ControlType,
+	SelectControlType,
+	InstructionStatusUpdate
+)
 
 from s2python.ombc import (
 	OMBCInstruction,
@@ -542,6 +553,11 @@ class EVCSDelegate():
 		)
 		await self._s2_send_message(resp)
 
+	async def _s2_on_instruction_status_update(self, message:InstructionStatusUpdate):
+		#Some RMs send instruction Status updates, when they receive an instruction.
+		#That is polite, but we don't mind that :)
+		await self._s2_send_reception_message(ReceptionStatusValues.OK, message)
+
 	async def _s2_send_message(self, message:S2MessageComponent, reply_handler: Optional[Callable[[ReceptionStatus], Coroutine[Any, Any, None]]] = None):
 		'''
 			Sends a s2 message. If a reply_handler is passed, this method will track for the response arriving
@@ -711,6 +727,8 @@ class EVCSDelegate():
 							await self._s2_on_ombc_status(self.s2_parser.parse_as_message(message.body[1], OMBCStatus))
 						elif jmsg["message_type"] == "PowerMeasurement":
 							await self._s2_on_power_measurement(self.s2_parser.parse_as_message(message.body[1], PowerMeasurement))
+						elif jmsg["message_type"] == "InstructionStatusUpdate":
+							await self._s2_on_instruction_status_update(self.s2_parser.parse_as_message(message.body[1], InstructionStatusUpdate))
 						elif jmsg["message_type"] == "ReceptionStatus":
 							p = self.s2_parser.parse_as_message(message.body[1], ReceptionStatus)
 							if p.subject_message_id in self._reply_handler_dict:

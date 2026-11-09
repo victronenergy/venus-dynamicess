@@ -27,7 +27,9 @@ class DynamicEssWindow(ScheduledWindow):
 		self.flags:Flags = Flags(flags)
 		self.slot:int = slot
 		self.duration:int = duration
-		self.to_ev:dict = json.loads(to_ev) if to_ev is not None and to_ev != "" else {}
+
+		# some mechanics convert json-objects to a dict already. Accept that as well.
+		self.to_ev:dict = to_ev if isinstance(to_ev, dict) else (json.loads(to_ev) if to_ev else {})
 
 	def get_window_progress(self, now) -> float:
 		""" returns the progress of the window, 0.00 - 100.00. If the window is not or no longer active, this returns none.

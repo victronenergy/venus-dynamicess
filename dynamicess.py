@@ -1121,10 +1121,6 @@ class DynamicEss():
 
 		if override_start is not None and override_start <= datetime.now(timezone.utc).timestamp() \
 			and override_duration is not None and override_start + override_duration > datetime.now(timezone.utc).timestamp():
-			logger.debug("Yielding override window starting at {} with duration {}".format(
-				datetime.fromtimestamp(override_start),
-				override_duration
-			))
 
 			yield DynamicEssWindow(
 				datetime.fromtimestamp(override_start),

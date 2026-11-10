@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest an improvement to Dynamic ESS on the GX device
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is for the software development of **Dynamic ESS on the GX device**. Requests about the
+        scheduling itself (done on the VRM side) should go to the
+        [Victron Community](https://community.victronenergy.com/) first.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched the existing issues and this has not already been requested.
+          required: true
+        - label: This request is about Dynamic ESS on the GX device, not about the schedule calculated by VRM.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to achieve, and what is currently missing or limiting?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour you would like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional information
+      description: Hardware setup, screenshots, or other context.
+    validations:
+      required: false

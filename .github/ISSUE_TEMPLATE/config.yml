@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions about Dynamic ESS scheduling / VRM
+    url: https://community.victronenergy.com/
+    about: >-
+      The schedule itself (when to charge, discharge, buy or sell) is calculated
+      on the VRM side, not in this repository. Please ask scheduling questions on
+      the Victron Community first. Scheduling issues opened here will be closed
+      with a reference to the Community.

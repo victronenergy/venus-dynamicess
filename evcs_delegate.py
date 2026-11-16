@@ -294,7 +294,7 @@ class EVCSDelegate():
 							execution_time = datetime.now(timezone.utc),
 							operation_mode_id = next_mode.id,
 							operation_mode_factor = next_omf,
-							abnormal_condition = next_omf == 0 #to stop we do set abnormal condition
+							abnormal_condition = p_total == 0 #to stop we do set abnormal condition
 						)
 					)
 

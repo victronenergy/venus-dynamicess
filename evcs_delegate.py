@@ -250,8 +250,9 @@ class EVCSDelegate():
 				if p_min <= self.power_setpoint:
 					next_mode = op_mode
 					next_mode_delta = 0 #we can only assume to be spot on as the range covers our desired setpoint.
-					next_omf = min((round((self.power_setpoint - p_min) / (p_max-p_min) if (p_max-p_min) > 0 else 0, 2), 1)
+					next_omf = min(round((self.power_setpoint - p_min) / (p_max-p_min) if (p_max-p_min) > 0 else 0, 2), 1)
 					next_mode_is_discrete = False
+					break #we can stop looking further, modes are sorted by power, when a model update is received.
 
 		if next_mode is None:
 			logger.warning("{} | Unable to find a operation-mode close to {}W".format(self.unique_identifier, self.power_setpoint))

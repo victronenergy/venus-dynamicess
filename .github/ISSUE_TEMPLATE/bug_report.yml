@@ -1,0 +1,107 @@
+name: Bug report
+description: Report a problem with how Dynamic ESS executes on the GX device
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please read before reporting.**
+
+        This repository is for the software development of **Dynamic ESS on the GX device** — i.e. how the GX
+        executes the schedule it receives. It is **not** about the scheduling itself (when to charge, discharge,
+        buy or sell); that is calculated on the **VRM side**.
+
+        Questions about the schedule should go to the [Victron Community](https://community.victronenergy.com/)
+        first. Scheduling issues opened here will be closed with a reference to the Community.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched the existing issues and this has not already been reported.
+          required: true
+        - label: This issue is about Dynamic ESS behaviour on the GX device, not about the schedule calculated by VRM.
+          required: true
+
+  - type: input
+    id: vrm_id
+    attributes:
+      label: VRM installation ID
+      description: >-
+        The number in the URL of your VRM dashboard, e.g. https://vrm.victronenergy.com/installation/123456/dashboard → 123456.
+        Please do not post the VRM portal ID (the hexadecimal ID shown on the GX).
+      placeholder: e.g. 123456
+    validations:
+      required: true
+
+  - type: input
+    id: venus_version
+    attributes:
+      label: Venus OS version
+      placeholder: e.g. v3.70
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: GX device, inverter/charger(s), battery, and any other relevant devices (PV inverters, EV charger, ...).
+      placeholder: |
+        GX device: Cerbo GX
+        Inverter/charger: 3x MultiPlus-II 48/5000
+        Battery: ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Dynamic ESS mode
+      options:
+        - Green
+        - Trade
+    validations:
+      required: true
+
+  - type: input
+    id: datetime
+    attributes:
+      label: Date and time of the issue
+      description: Please include the timezone.
+      placeholder: e.g. 2026-11-10 14:00–15:00 CET
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: A clear description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: A clear description of what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Screenshots (e.g. of the VRM Dynamic ESS graphs or the GX) are very helpful. You can paste or drag images here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional information
+      description: Logs, settings, or anything else that may help.
+    validations:
+      required: false

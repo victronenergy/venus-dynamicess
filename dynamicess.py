@@ -74,6 +74,8 @@ from globals import (
 	C_BATTERY_DISCHARGE_LIMIT,
 	C_DISABLE_EVCS_CONTROL,
 	C_EFFICIENCY,
+	C_GRID_EXPORT_LIMIT,
+	C_GRID_IMPORT_LIMIT,
 	C_LAST_RUN_VERSION,
 	C_OPERATING_MODE,
 	C_ENABLE_DEBUG_LOGGING,
@@ -1036,8 +1038,14 @@ class DynamicEss():
 		'''
 			Checks if all operational constraints are met. Then returns NO_ERROR.
 		'''
-		if C_BATTERY_CAPACITY.current_value is None or C_BATTERY_CAPACITY.current_value <= 0.0:
-			return ErrorCode.BATTERY_CAPACITY_UNSET
+		mandatory_settings_present = C_BATTERY_CAPACITY.current_value is not None and C_BATTERY_CAPACITY.current_value > 0.0
+		mandatory_settings_present &= C_BATTERY_CHARGE_LIMIT.current_value is not None and C_BATTERY_CHARGE_LIMIT.current_value > -1
+		mandatory_settings_present &= C_BATTERY_DISCHARGE_LIMIT.current_value is not None and C_BATTERY_DISCHARGE_LIMIT.current_value > -1
+		mandatory_settings_present &= C_GRID_IMPORT_LIMIT.current_value is not None and C_GRID_IMPORT_LIMIT.current_value > -1
+		mandatory_settings_present &= C_GRID_EXPORT_LIMIT.current_value is not None and C_GRID_EXPORT_LIMIT.current_value > -1
+
+		if not mandatory_settings_present:
+			return ErrorCode.MANDATORY_SETTING_UNSET
 
 		if self._device is None:
 			return ErrorCode.NO_ESS

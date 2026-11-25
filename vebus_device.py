@@ -21,6 +21,9 @@ class VebusDevice(EssDevice):
 		local_feedin_limit = self._aiomonitor.get_value(SETTINGS_SERVICE,
                 '/Settings/CGwacs/MaxFeedInPower')
 
+		if local_feedin_limit is None:
+			local_feedin_limit = -1
+
 		dess_feedin_limit = C_GRID_EXPORT_LIMIT.current_value * 1000.0 if C_GRID_EXPORT_LIMIT.current_value is not None else -1
 
 		if local_feedin_limit > -1 and dess_feedin_limit == -1:

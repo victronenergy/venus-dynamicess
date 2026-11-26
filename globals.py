@@ -285,7 +285,7 @@ C_OVERRIDE_FLAGS = Configurable(
 	None, 0, 0, sum([v.value for v in Flags]), CONFIGURABLES
 )
 C_OVERRIDE_ALLOW_GRID_FEEDIN = Configurable(
-	'/Overrides/AllowGridFeedin',
+	'/Overrides/AllowGridFeedIn',
 	None,
 	None, 0, 0, 1, CONFIGURABLES
 )

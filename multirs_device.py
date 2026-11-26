@@ -42,7 +42,7 @@ class MultiRsDevice(EssDevice):
 
 		# if fastcharge is requested, use the maximum power allowed as per user definition.
 		if fast_charge_requested:
-			rate = C_BATTERY_CHARGE_LIMIT.current_value * 1000.0
+			rate = C_BATTERY_CHARGE_LIMIT.current_value * 1000.0 * self._dynamic_ess.oneway_efficiency
 
 		#if we have a grid2bat restriction, the maximum amount we can charge is solar.
 		#consumption can be ignored, may be pulled from grid. (this just validates a grid2bat, not a grid2anywhere restriction)
@@ -53,8 +53,13 @@ class MultiRsDevice(EssDevice):
 		# we now have to translate the dc_rate into a ac_setpoint.
 
 		# In an unrestricted case, we just feedin everything, keep consumption - plus, what we actually want to flow TO the battery.
-		# DCPV has a slight penalty, when feeding in. When requesting a certain battery rate, we need to request less at the setpoint due to efficiency losses.
-		setpoint = - (self.acpv or 0) - ((self.pvpower or 0) * self._dynamic_ess.oneway_efficiency) + ((self.consumption or 0) + rate * self._dynamic_ess.oneway_efficiency)
+		# efficiency conversion needs to be applied based on the actual direction of the power flow.
+		# when dcpv exceeds the requested battery rate, the surplus flows DC-to-AC and is multiplied by efficiency;
+		# the final grid setpoint also includes AC-PV and consumption, so it can still be positive.
+		setpoint = max(rate - (self.pvpower or 0), 0) / self._dynamic_ess.oneway_efficiency \
+				 + min(rate - (self.pvpower or 0), 0) * self._dynamic_ess.oneway_efficiency \
+				 - (self.acpv or 0) \
+				 + (self.consumption or 0)
 
 		#- If Feedin is restricted, setpoint is not allowed to be negative.
 		#this needs to be checked for charge cases as well, because a low chargerate may cause feedin.

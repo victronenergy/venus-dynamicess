@@ -16,3 +16,4 @@ TRANSITION_STATE_THRESHOLD = 90.0 #percent
 S2_IFACE = "com.victronenergy.S2"
 S2_CLIENT_ID = "dynamic_ess"
 S2_VERSION = "0.0.2-beta"
+EV_EMERGENCY_SETPOINT_DEFAULT = 4140 # 3-phase, 10A

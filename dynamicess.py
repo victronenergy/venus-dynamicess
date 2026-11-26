@@ -49,6 +49,7 @@ from constants import (
 	S2_CLIENT_ID,
 	NUM_SCHEDULES,
 	TRANSITION_STATE_THRESHOLD,
+	EV_EMERGENCY_SETPOINT_DEFAULT,
 )
 
 from helper import (
@@ -85,6 +86,7 @@ from globals import (
 	C_OVERRIDE_STRATEGY,
 	C_OVERRIDE_TARGET_SOC,
 	C_OVERRIDE_TO_EV_BATTERY,
+	C_EV_EMERGENCY_SETPOINT,
 	Mode,
 	Capabilities,
 	ChangeIndicator,
@@ -578,6 +580,13 @@ class DynamicEss():
 					logger.debug("VEBUS: Migrating efficiency setting from 90% to 85 for better real-life matching.")
 					C_EFFICIENCY.current_value = 85
 					await C_EFFICIENCY.force_write_to_settings(self.settings_service)
+
+		if prior_version < version_str_to_tuple("1.0.9"):
+			#migrate EVCS emergency setpoint default
+			if C_EV_EMERGENCY_SETPOINT.current_value == -1:
+				logger.debug("Migrating EVCS emergency setpoint to new default value.")
+				C_EV_EMERGENCY_SETPOINT.current_value = EV_EMERGENCY_SETPOINT_DEFAULT
+				await C_EV_EMERGENCY_SETPOINT.force_write_to_settings(self.settings_service)
 
 		#update last_run_version setting
 		C_LAST_RUN_VERSION.current_value = VERSION

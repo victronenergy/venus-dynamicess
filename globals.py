@@ -1,11 +1,12 @@
 import enum
 import sys
 
+from constants import EV_EMERGENCY_SETPOINT_DEFAULT
 from helper import Configurable
 from enum import Enum, IntFlag
 import logging
 
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 BRANCH = ""
 
 class Mode(int, Enum):
@@ -247,7 +248,7 @@ C_EV_EMERGENCY_START = Configurable(
 C_EV_EMERGENCY_SETPOINT = Configurable(
 	None,
 	'/Settings/DynamicEss/EVEmergencySetpoint',
-	'dess_evemergencysetpoint', -1, -1, 100000, CONFIGURABLES
+	'dess_evemergencysetpoint', EV_EMERGENCY_SETPOINT_DEFAULT, -1, 100000, CONFIGURABLES
 )
 C_EVCS_VRM_FLAGS = Configurable(
 	None,

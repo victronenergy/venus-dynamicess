@@ -54,7 +54,8 @@ class MultiRsDevice(EssDevice):
 
 		# In an unrestricted case, we just feedin everything, keep consumption - plus, what we actually want to flow TO the battery.
 		# efficiency conversion needs to be applied based on the actual direction of the power flow.
-		# when there is more dcpv than the requested rate, the setpoint will be negative and efficiency conversion will apply accordingly.
+		# when dcpv exceeds the requested battery rate, the surplus flows DC-to-AC and is multiplied by efficiency;
+		# the final grid setpoint also includes AC-PV and consumption, so it can still be positive.
 		setpoint = max(rate - (self.pvpower or 0), 0) / self._dynamic_ess.oneway_efficiency \
 				 + min(rate - (self.pvpower or 0), 0) * self._dynamic_ess.oneway_efficiency \
 				 - (self.acpv or 0) \
